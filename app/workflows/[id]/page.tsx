@@ -469,6 +469,35 @@ export default function WorkflowBuilderPage() {
     }
   };
 
+  const handleExport = async () => {
+    if (!workflowId || !workflow) return;
+    try {
+      const response = await fetch(`/api/workflows/${workflowId}/export`, {
+        method: "GET",
+      });
+
+      if (!response.ok) {
+        const body = await response.json().catch(() => null);
+        throw new Error(body?.error ?? "Failed to export workflow");
+      }
+
+      const blob = await response.blob();
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      const name = workflow.name?.trim() ?? "workflow";
+      const sanitized = name.replace(/[^a-z0-9-_]+/gi, "-") || "workflow";
+      link.download = `${sanitized}-${workflowId}.json`;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      URL.revokeObjectURL(url);
+    } catch (error) {
+      console.error(error);
+      window.alert(error instanceof Error ? error.message : "Unable to export workflow");
+    }
+  };
+
   const handleDeleteNode = (nodeId: string) => {
     setNodes((prev) => prev.filter((node) => node.id !== nodeId));
     setEdges((prev) => prev.filter((edge) => edge.source !== nodeId && edge.target !== nodeId));
@@ -596,6 +625,9 @@ export default function WorkflowBuilderPage() {
             <Button variant="outline" onClick={() => void fetchWorkflow()}>
               Reset
             </Button>
+              <Button variant="outline" onClick={() => void handleExport()}>
+                Export JSON
+              </Button>
             <Button variant="outline" onClick={handleSave} disabled={isSaving}>
               {isSaving ? "Saving..." : "Save"}
             </Button>

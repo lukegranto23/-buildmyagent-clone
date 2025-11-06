@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { Button } from "@/components/ui/button";
 
@@ -47,6 +47,9 @@ export default function WorkflowsPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [isCreating, setIsCreating] = useState(false);
+  const [isImporting, setIsImporting] = useState(false);
+  const [cloningId, setCloningId] = useState<string | null>(null);
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
 
   const fetchWorkflows = useCallback(async () => {
     setIsLoading(true);
@@ -125,6 +128,76 @@ export default function WorkflowsPage() {
     }
   };
 
+  const handleImportClick = () => {
+    fileInputRef.current?.click();
+  };
+
+  const handleImportFileChange = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    event.target.value = "";
+    if (!file) return;
+
+    setIsImporting(true);
+    try {
+      const text = await file.text();
+      const parsed = JSON.parse(text);
+
+      const payload = {
+        agentId: typeof parsed.agentId === "string" ? parsed.agentId : agentIdParam,
+        name: typeof parsed.name === "string" && parsed.name.trim().length > 0 ? parsed.name : `Imported Workflow ${new Date().toLocaleString()}`,
+        description: typeof parsed.description === "string" ? parsed.description : null,
+        nodes: Array.isArray(parsed.nodes) ? parsed.nodes : [],
+        edges: Array.isArray(parsed.edges) ? parsed.edges : [],
+        status: typeof parsed.status === "string" ? parsed.status : "draft",
+        schedule: typeof parsed.schedule === "string" ? parsed.schedule : null,
+        metadata: parsed.metadata && typeof parsed.metadata === "object" ? parsed.metadata : undefined,
+      };
+
+      const response = await fetch("/api/workflows", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+
+      if (!response.ok) {
+        const body = await response.json().catch(() => null);
+        throw new Error(body?.error ?? "Failed to import workflow");
+      }
+
+      const created = await response.json();
+      await fetchWorkflows();
+      router.push(`/workflows/${created.id}`);
+    } catch (err) {
+      console.error(err);
+      window.alert(err instanceof Error ? err.message : "Unable to import workflow. Ensure the JSON matches the export format.");
+    } finally {
+      setIsImporting(false);
+    }
+  };
+
+  const handleClone = async (workflowId: string) => {
+    setCloningId(workflowId);
+    try {
+      const response = await fetch(`/api/workflows/${workflowId}/clone`, {
+        method: "POST",
+      });
+
+      const body = await response.json().catch(() => null);
+
+      if (!response.ok) {
+        throw new Error(body?.error ?? "Failed to clone workflow");
+      }
+
+      await fetchWorkflows();
+      router.push(`/workflows/${body.id}`);
+    } catch (err) {
+      console.error(err);
+      window.alert(err instanceof Error ? err.message : "Unable to clone workflow");
+    } finally {
+      setCloningId(null);
+    }
+  };
+
   return (
     <div className="min-h-screen bg-gray-100">
       <header className="border-b bg-white">
@@ -140,12 +213,23 @@ export default function WorkflowsPage() {
             <Button variant="outline" onClick={() => void fetchWorkflows()} disabled={isLoading}>
               {isLoading ? "Refreshing..." : "Refresh"}
             </Button>
+            <Button variant="outline" onClick={handleImportClick} disabled={isImporting}>
+              {isImporting ? "Importing..." : "Import JSON"}
+            </Button>
             <Button onClick={handleCreateWorkflow} disabled={isCreating}>
               {isCreating ? "Creating..." : "New workflow"}
             </Button>
           </div>
         </div>
       </header>
+
+      <input
+        ref={fileInputRef}
+        type="file"
+        accept="application/json"
+        className="hidden"
+        onChange={handleImportFileChange}
+      />
 
       <main className="container mx-auto px-4 py-8">
         {agentIdParam && (
@@ -235,6 +319,29 @@ export default function WorkflowsPage() {
                 </div>
                 <div className="mt-4 border-t border-dashed border-gray-200 pt-4 text-xs text-gray-500">
                   <p>Updated {new Date(workflow.updatedAt).toLocaleString("en-US", { dateStyle: "short", timeStyle: "short" })}</p>
+                </div>
+                <div className="mt-4 flex gap-2">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={(event) => {
+                      event.preventDefault();
+                      void handleClone(workflow.id);
+                    }}
+                    disabled={cloningId === workflow.id}
+                  >
+                    {cloningId === workflow.id ? "Cloning..." : "Clone"}
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={(event) => {
+                      event.preventDefault();
+                      router.push(`/workflows/${workflow.id}`);
+                    }}
+                  >
+                    Open
+                  </Button>
                 </div>
               </Link>
             ))}
