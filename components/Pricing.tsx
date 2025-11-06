@@ -65,6 +65,8 @@ const plans = [
   },
 ];
 
+import { PricingCheckout } from "./PricingCheckout";
+
 export function Pricing() {
   const [billingInterval, setBillingInterval] = useState<"month" | "year">("month");
 

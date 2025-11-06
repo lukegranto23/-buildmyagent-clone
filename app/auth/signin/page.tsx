@@ -2,19 +2,44 @@
 
 import { useState } from "react";
 import Link from "next/link";
+import { signIn } from "next-auth/react";
 import { Button } from "@/components/ui/button";
 
 export default function SignInPage() {
   const [email, setEmail] = useState("");
+  const [isLoading, setIsLoading] = useState(false);
+  const [message, setMessage] = useState("");
 
-  const handleEmailSignIn = () => {
-    // TODO: Implement email sign in
-    console.log("Sign in with email:", email);
+  const handleEmailSignIn = async () => {
+    setIsLoading(true);
+    setMessage("");
+    try {
+      const result = await signIn("email", {
+        email,
+        redirect: false,
+        callbackUrl: "/",
+      });
+      
+      if (result?.error) {
+        setMessage("Failed to send sign-in link. Please try again.");
+      } else {
+        setMessage("Check your email for a sign-in link!");
+      }
+    } catch (error) {
+      setMessage("An error occurred. Please try again.");
+    } finally {
+      setIsLoading(false);
+    }
   };
 
-  const handleGoogleSignIn = () => {
-    // TODO: Implement Google OAuth
-    console.log("Sign in with Google");
+  const handleGoogleSignIn = async () => {
+    setIsLoading(true);
+    try {
+      await signIn("google", { callbackUrl: "/" });
+    } catch (error) {
+      setMessage("Google sign-in failed. Please try again.");
+      setIsLoading(false);
+    }
   };
 
   return (
@@ -24,6 +49,16 @@ export default function SignInPage() {
           <h1 className="text-3xl font-bold mb-2">Welcome Back</h1>
           <p className="text-gray-600">Choose your preferred sign-in method</p>
         </div>
+
+        {message && (
+          <div className={`mb-4 p-3 rounded-lg text-sm ${
+            message.includes("error") || message.includes("failed")
+              ? "bg-red-50 text-red-700 border border-red-200"
+              : "bg-green-50 text-green-700 border border-green-200"
+          }`}>
+            {message}
+          </div>
+        )}
 
         <div className="space-y-4">
           <div>
@@ -36,12 +71,17 @@ export default function SignInPage() {
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               placeholder="you@example.com"
-              className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+              disabled={isLoading}
+              className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-50"
             />
           </div>
 
-          <Button onClick={handleEmailSignIn} className="w-full bg-blue-600 text-white hover:bg-blue-700">
-            Continue with Email
+          <Button 
+            onClick={handleEmailSignIn} 
+            className="w-full bg-blue-600 text-white hover:bg-blue-700"
+            disabled={isLoading || !email}
+          >
+            {isLoading ? "Sending..." : "Continue with Email"}
           </Button>
 
           <div className="relative my-6">
@@ -57,6 +97,7 @@ export default function SignInPage() {
             onClick={handleGoogleSignIn}
             variant="outline"
             className="w-full flex items-center justify-center gap-2"
+            disabled={isLoading}
           >
             <svg className="w-5 h-5" viewBox="0 0 24 24">
               <path
