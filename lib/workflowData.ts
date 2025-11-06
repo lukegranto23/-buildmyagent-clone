@@ -1,5 +1,9 @@
 import { MarkerType } from "reactflow";
 
+export const WORKFLOW_LIBRARY_STORAGE_KEY = "bma-workflow-library";
+export const WORKFLOW_TEMPLATE_SESSION_KEY = "bma-workflow-template";
+export const WORKFLOW_CONNECTOR_STATE_PREFIX = "bma-workflow-connectors-";
+
 export type WorkflowModule = {
   id: string;
   category: "Triggers" | "AI" | "Integrations" | "Utilities";
@@ -23,6 +27,12 @@ export type WorkflowModule = {
     max?: number;
     step?: number;
   }>;
+};
+
+export type ConnectorState = {
+  id: string;
+  label: string;
+  enabled: boolean;
 };
 
 export const workflowModules: WorkflowModule[] = [

@@ -5,7 +5,13 @@ import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 
 import { Button } from "@/components/ui/button";
-import { workflowTemplates } from "@/lib/workflowData";
+import {
+  workflowTemplates,
+  workflowModules,
+  WORKFLOW_LIBRARY_STORAGE_KEY,
+  WORKFLOW_TEMPLATE_SESSION_KEY,
+  type ConnectorState,
+} from "@/lib/workflowData";
 
 type SavedWorkflow = {
   id: string;
@@ -13,18 +19,30 @@ type SavedWorkflow = {
   templateId?: string;
   createdAt: string;
   notes?: string;
+  connectors?: ConnectorState[];
 };
-
-const STORAGE_KEY = "bma-workflow-library";
-const TEMPLATE_SESSION_KEY = "bma-workflow-template";
 
 function loadSavedWorkflows(): SavedWorkflow[] {
   if (typeof window === "undefined") return [];
   try {
-    const raw = window.localStorage.getItem(STORAGE_KEY);
+    const raw = window.localStorage.getItem(WORKFLOW_LIBRARY_STORAGE_KEY);
     if (!raw) return [];
     const parsed = JSON.parse(raw) as SavedWorkflow[];
-    return Array.isArray(parsed) ? parsed : [];
+    const integrations = workflowModules.filter((module) => module.category === "Integrations");
+    return Array.isArray(parsed)
+      ? parsed.map((workflow) =>
+          workflow.connectors
+            ? workflow
+            : {
+                ...workflow,
+                connectors: integrations.map((module) => ({
+                  id: module.id,
+                  label: module.title,
+                  enabled: true,
+                })),
+              }
+        )
+      : [];
   } catch (error) {
     console.warn("Failed to parse saved workflows", error);
     return [];
@@ -33,7 +51,7 @@ function loadSavedWorkflows(): SavedWorkflow[] {
 
 function persistWorkflows(workflows: SavedWorkflow[]) {
   if (typeof window === "undefined") return;
-  window.localStorage.setItem(STORAGE_KEY, JSON.stringify(workflows));
+  window.localStorage.setItem(WORKFLOW_LIBRARY_STORAGE_KEY, JSON.stringify(workflows));
 }
 
 function formatDate(value: string) {
@@ -57,12 +75,15 @@ export default function WorkflowsPage() {
 
   const handleLaunchTemplate = (templateId: string) => {
     if (typeof window !== "undefined") {
-      window.sessionStorage.setItem(TEMPLATE_SESSION_KEY, templateId);
+      window.sessionStorage.setItem(WORKFLOW_TEMPLATE_SESSION_KEY, templateId);
     }
     router.push(`/workflows/create?template=${templateId}`);
   };
 
   const handleSaveTemplate = (templateId: string, name: string) => {
+    const connectors: ConnectorState[] = workflowModules
+      .filter((module) => module.category === "Integrations")
+      .map((module) => ({ id: module.id, label: module.title, enabled: true }));
     setSavedWorkflows((prev) => {
       const next: SavedWorkflow[] = [
         {
@@ -70,6 +91,7 @@ export default function WorkflowsPage() {
           name,
           templateId,
           createdAt: new Date().toISOString(),
+          connectors,
         },
         ...prev,
       ];
@@ -137,10 +159,10 @@ export default function WorkflowsPage() {
                 Each saved workflow remembers the template you started from and any notes you add before handing it to a client.
               </p>
             </div>
-            <Button variant="outline" onClick={() => setSavedWorkflows(() => {
-              persistWorkflows([]);
-              return [];
-            })}>
+              <Button variant="outline" onClick={() => setSavedWorkflows(() => {
+                persistWorkflows([]);
+                return [];
+              })}>
               Clear library
             </Button>
           </div>
@@ -156,7 +178,7 @@ export default function WorkflowsPage() {
                   ? workflowTemplates.find((item) => item.id === workflow.templateId)
                   : undefined;
                 return (
-                  <div key={workflow.id} className="flex flex-col justify-between rounded-2xl border border-gray-200 bg-white p-5 shadow-sm">
+                    <div key={workflow.id} className="flex flex-col justify-between rounded-2xl border border-gray-200 bg-white p-5 shadow-sm">
                     <div>
                       <div className="flex items-start justify-between gap-3">
                         <div>
@@ -171,6 +193,19 @@ export default function WorkflowsPage() {
                       {template ? (
                         <p className="mt-3 text-sm text-gray-600">Based on <span className="font-semibold text-blue-600">{template.name}</span> · {template.category}</p>
                       ) : null}
+                        {workflow.connectors?.length ? (
+                          <div className="mt-3 flex flex-wrap gap-2 text-[11px] font-semibold">
+                            {workflow.connectors.map((connector) => (
+                              <span
+                                key={`${workflow.id}-${connector.id}`}
+                                className={`rounded-full px-3 py-1 ${connector.enabled ? "bg-emerald-100 text-emerald-700" : "bg-gray-200 text-gray-600"}`}
+                              >
+                                {connector.label}
+                                {!connector.enabled ? " (off)" : ""}
+                              </span>
+                            ))}
+                          </div>
+                        ) : null}
                       <textarea
                         value={workflow.notes ?? ""}
                         onChange={(event) => handleUpdateNotes(workflow.id, event.target.value)}

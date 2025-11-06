@@ -6,9 +6,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 
 import { Button } from "@/components/ui/button";
 import { WorkflowBuilder } from "@/components/workflows/WorkflowBuilder";
-import { workflowTemplates } from "@/lib/workflowData";
-
-const TEMPLATE_SESSION_KEY = "bma-workflow-template";
+import { workflowTemplates, WORKFLOW_TEMPLATE_SESSION_KEY } from "@/lib/workflowData";
 
 function WorkflowBuilderShell() {
   const router = useRouter();
@@ -20,8 +18,8 @@ function WorkflowBuilderShell() {
   useEffect(() => {
     let nextTemplate = queryTemplate;
 
-    if (!nextTemplate && typeof window !== "undefined") {
-      nextTemplate = window.sessionStorage.getItem(TEMPLATE_SESSION_KEY);
+      if (!nextTemplate && typeof window !== "undefined") {
+        nextTemplate = window.sessionStorage.getItem(WORKFLOW_TEMPLATE_SESSION_KEY);
     }
 
     if (!nextTemplate) {
@@ -30,8 +28,8 @@ function WorkflowBuilderShell() {
 
     setTemplateId(nextTemplate);
 
-    if (typeof window !== "undefined") {
-      window.sessionStorage.removeItem(TEMPLATE_SESSION_KEY);
+      if (typeof window !== "undefined") {
+        window.sessionStorage.removeItem(WORKFLOW_TEMPLATE_SESSION_KEY);
     }
   }, [queryTemplate]);
 

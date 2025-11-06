@@ -21,13 +21,16 @@ import { Switch } from "../ui/switch";
 import { Label } from "../ui/label";
 import { Slider } from "../ui/slider";
 import {
+  WORKFLOW_CONNECTOR_STATE_PREFIX,
+  WORKFLOW_LIBRARY_STORAGE_KEY,
   buildEdgesFromTemplate,
   buildNodesFromTemplate,
   getWorkflowTemplate,
   workflowModules,
   workflowTemplates,
+  type ConnectorState,
+  type WorkflowModule,
 } from "@/lib/workflowData";
-import type { WorkflowModule } from "@/lib/workflowData";
 
 import {
   Bot,
@@ -90,26 +93,83 @@ export function WorkflowBuilder({ templateId }: WorkflowBuilderProps = {}) {
   const [isSimulating, setIsSimulating] = useState(false);
   const [showConnectors, setShowConnectors] = useState(false);
   const [showDeploy, setShowDeploy] = useState(false);
-  const [connectorState, setConnectorState] = useState<Record<string, boolean>>(() => {
-    const integrations = workflowModules.filter((module) => module.category === "Integrations");
-    return integrations.reduce<Record<string, boolean>>((acc, module) => {
-      acc[module.id] = true;
-      return acc;
-    }, {});
-  });
+  const [connectorState, setConnectorState] = useState<Record<string, boolean>>({});
+  const integrationModules = useMemo(
+    () => workflowModules.filter((module) => module.category === "Integrations"),
+    []
+  );
+  const effectiveTemplateId = templateId ?? DEFAULT_GRAPH.templateId ?? null;
+
   const handleToggleConnector = useCallback((id: string, value: boolean) => {
-    setConnectorState((prev) => ({ ...prev, [id]: value }));
-  }, []);
+    setConnectorState((prev) => {
+      const next = { ...prev, [id]: value };
+
+      if (typeof window !== "undefined") {
+        try {
+          const key = `${WORKFLOW_CONNECTOR_STATE_PREFIX}${effectiveTemplateId ?? "default"}`;
+          window.localStorage.setItem(key, JSON.stringify(next));
+
+          const rawLibrary = window.localStorage.getItem(WORKFLOW_LIBRARY_STORAGE_KEY);
+          if (rawLibrary) {
+            const parsed = JSON.parse(rawLibrary) as Array<{ templateId?: string; connectors?: ConnectorState[]; [key: string]: unknown }>;
+            const connectorsArray = integrationModules.map((module) => ({
+              id: module.id,
+              label: module.title,
+              enabled: next[module.id] ?? false,
+            }));
+            const updated = parsed.map((workflow) =>
+              effectiveTemplateId && workflow.templateId === effectiveTemplateId
+                ? { ...workflow, connectors: connectorsArray }
+                : workflow
+            );
+            window.localStorage.setItem(WORKFLOW_LIBRARY_STORAGE_KEY, JSON.stringify(updated));
+          }
+        } catch (error) {
+          console.warn("Failed to persist connector state", error);
+        }
+      }
+
+      return next;
+    });
+  }, [effectiveTemplateId, integrationModules]);
 
   const selectedNode = useMemo(
     () => nodes.find((node) => node.id === selectedNodeId),
     [nodes, selectedNodeId]
   );
 
-  const integrationModules = useMemo(
-    () => workflowModules.filter((module) => module.category === "Integrations"),
-    []
-  );
+  useEffect(() => {
+    const base = integrationModules.reduce<Record<string, boolean>>((acc, module) => {
+      acc[module.id] = true;
+      return acc;
+    }, {});
+
+    if (typeof window !== "undefined") {
+      try {
+        const templateKey = `${WORKFLOW_CONNECTOR_STATE_PREFIX}${effectiveTemplateId ?? "default"}`;
+        const rawRecord = window.localStorage.getItem(templateKey);
+        if (rawRecord) {
+          const parsed = JSON.parse(rawRecord) as Record<string, boolean>;
+          Object.assign(base, parsed);
+        } else {
+          const rawLibrary = window.localStorage.getItem(WORKFLOW_LIBRARY_STORAGE_KEY);
+          if (rawLibrary && effectiveTemplateId) {
+            const parsed = JSON.parse(rawLibrary) as Array<{ templateId?: string; connectors?: ConnectorState[] }>;
+            const match = parsed.find((workflow) => workflow.templateId === effectiveTemplateId);
+            if (match?.connectors) {
+              match.connectors.forEach((connector) => {
+                base[connector.id] = connector.enabled;
+              });
+            }
+          }
+        }
+      } catch (error) {
+        console.warn("Failed to load connector state", error);
+      }
+    }
+
+    setConnectorState(base);
+  }, [effectiveTemplateId, integrationModules]);
 
   useEffect(() => {
     if (!templateId) return;
