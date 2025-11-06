@@ -114,6 +114,7 @@ model Workflow {
   versions    WorkflowVersion[] @relation("WorkflowVersions")
   activeVersionId String?
   activeVersion   WorkflowVersion? @relation("ActiveWorkflowVersion", fields: [activeVersionId], references: [id])
+  presence    WorkflowPresence[]
 
   @@index([agentId])
   @@index([status])
@@ -177,5 +178,18 @@ model WorkflowVersion {
 
   @@unique([workflowId, versionNumber])
   @@index([workflowId, versionNumber])
+}
+
+model WorkflowPresence {
+  id         String   @id @default(cuid())
+  workflowId String
+  workflow   Workflow @relation(fields: [workflowId], references: [id], onDelete: Cascade)
+  sessionId  String
+  displayName String?
+  color      String?
+  lastSeen   DateTime @default(now())
+
+  @@unique([workflowId, sessionId])
+  @@index([workflowId, lastSeen])
 }
 

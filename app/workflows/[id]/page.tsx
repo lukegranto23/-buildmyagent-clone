@@ -3,7 +3,7 @@
 import "reactflow/dist/style.css";
 
 import { useParams, useRouter } from "next/navigation";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import ReactFlow, {
   Background,
   Connection,
@@ -117,6 +117,13 @@ type WorkflowVersionDetail = {
   };
 };
 
+type PresenceParticipant = {
+  sessionId: string;
+  displayName: string | null;
+  color: string | null;
+  lastSeen: string;
+};
+
 const NODE_LIBRARY: NodeLibraryItem[] = [
   {
     type: "trigger",
@@ -192,6 +199,16 @@ const statusOptions = [
   { value: "draft", label: "Draft" },
   { value: "active", label: "Active" },
   { value: "paused", label: "Paused" },
+];
+
+const PRESENCE_COLORS = [
+  "#2563eb",
+  "#db2777",
+  "#16a34a",
+  "#a855f7",
+  "#f97316",
+  "#0ea5e9",
+  "#facc15",
 ];
 
 function WorkflowNodeCard({ data }: { data: WorkflowNodeData }) {
@@ -287,6 +304,12 @@ export default function WorkflowBuilderPage() {
   const [isVersionDetailLoading, setIsVersionDetailLoading] = useState(false);
   const [isVersionSaving, setIsVersionSaving] = useState(false);
   const [versionActionId, setVersionActionId] = useState<string | null>(null);
+  const [presence, setPresence] = useState<PresenceParticipant[]>([]);
+  const [sessionId, setSessionId] = useState<string | null>(null);
+  const [presenceName, setPresenceName] = useState<string | null>(null);
+  const [presenceColor, setPresenceColor] = useState<string | null>(null);
+  const heartbeatRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const presenceIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const fetchWorkflow = useCallback(async () => {
     if (!workflowId) return;
@@ -321,6 +344,107 @@ export default function WorkflowBuilderPage() {
   useEffect(() => {
     void loadVersions();
   }, [loadVersions]);
+
+useEffect(() => {
+  if (typeof window === "undefined" || !workflowId) return;
+
+  const sessionKey = `workflow-presence-${workflowId}`;
+  let localSession = window.localStorage.getItem(sessionKey);
+  if (!localSession) {
+    const generated = typeof window.crypto !== "undefined" && window.crypto.randomUUID ? window.crypto.randomUUID() : Math.random().toString(36).slice(2);
+    localSession = generated;
+    window.localStorage.setItem(sessionKey, generated);
+  }
+  setSessionId(localSession);
+
+  let storedName = window.localStorage.getItem("workflow-presence-name");
+  if (!storedName) {
+    storedName = `Teammate ${Math.floor(Math.random() * 900) + 100}`;
+    window.localStorage.setItem("workflow-presence-name", storedName);
+  }
+  setPresenceName(storedName);
+
+  const colorKey = `workflow-presence-color-${localSession}`;
+  let storedColor = window.localStorage.getItem(colorKey);
+  if (!storedColor) {
+    storedColor = PRESENCE_COLORS[Math.floor(Math.random() * PRESENCE_COLORS.length)];
+    window.localStorage.setItem(colorKey, storedColor);
+  }
+  setPresenceColor(storedColor);
+}, [workflowId]);
+
+useEffect(() => {
+  if (!workflowId || !sessionId) return;
+
+  const sendHeartbeat = async () => {
+    try {
+      await fetch(`/api/workflows/${workflowId}/presence`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          sessionId,
+          displayName: presenceName,
+          color: presenceColor,
+        }),
+      });
+    } catch (error) {
+      console.error(error);
+    }
+  };
+
+  void sendHeartbeat();
+  heartbeatRef.current = setInterval(sendHeartbeat, 20_000);
+
+  const handleBeforeUnload = () => {
+    try {
+      const url = `/api/workflows/${workflowId}/presence?sessionId=${encodeURIComponent(sessionId)}`;
+      if (navigator.sendBeacon) {
+        const blob = new Blob(["{}"], { type: "application/json" });
+        navigator.sendBeacon(url, blob);
+      } else {
+        void fetch(url, { method: "DELETE", keepalive: true });
+      }
+    } catch (error) {
+      console.error(error);
+    }
+  };
+
+  if (typeof window !== "undefined") {
+    window.addEventListener("beforeunload", handleBeforeUnload);
+  }
+
+  return () => {
+    if (heartbeatRef.current) {
+      clearInterval(heartbeatRef.current);
+      heartbeatRef.current = null;
+    }
+    if (typeof window !== "undefined") {
+      window.removeEventListener("beforeunload", handleBeforeUnload);
+    }
+    try {
+      const url = `/api/workflows/${workflowId}/presence?sessionId=${encodeURIComponent(sessionId)}`;
+      void fetch(url, { method: "DELETE", keepalive: true }).catch(() => undefined);
+    } catch (error) {
+      console.error(error);
+    }
+  };
+}, [presenceColor, presenceName, sessionId, workflowId]);
+
+useEffect(() => {
+  if (!workflowId) return;
+
+  void fetchPresence();
+  presenceIntervalRef.current = setInterval(() => {
+    void fetchPresence();
+  }, 10_000);
+
+  return () => {
+    if (presenceIntervalRef.current) {
+      clearInterval(presenceIntervalRef.current);
+      presenceIntervalRef.current = null;
+    }
+  };
+}, [fetchPresence, workflowId]);
 
   const onNodesChange = useCallback(
     (changes: NodeChange[]) => setNodes((nds) => applyNodeChanges(changes, nds)),
@@ -568,6 +692,24 @@ export default function WorkflowBuilderPage() {
     [fetchVersionDetail, fetchWorkflow, loadHistory, loadVersions, workflowId]
   );
 
+  const fetchPresence = useCallback(async () => {
+    if (!workflowId) return;
+    try {
+      const response = await fetch(`/api/workflows/${workflowId}/presence`);
+      const body = await response.json().catch(() => null);
+
+      if (!response.ok) {
+        throw new Error(body?.error ?? "Failed to load presence");
+      }
+
+      if (Array.isArray(body)) {
+        setPresence(body as PresenceParticipant[]);
+      }
+    } catch (error) {
+      console.error(error);
+    }
+  }, [workflowId]);
+
   const handleAddNode = (item: NodeLibraryItem) => {
     const id = `${item.type}-${Date.now()}`;
     const newNode: WorkflowNode = {
@@ -750,6 +892,21 @@ export default function WorkflowBuilderPage() {
     return normalized.length > 160 ? `${normalized.slice(0, 157)}...` : normalized;
   };
 
+  const selfPresence = useMemo(
+    () => (sessionId ? presence.find((item) => item.sessionId === sessionId) ?? null : null),
+    [presence, sessionId]
+  );
+
+  const otherPresence = useMemo(
+    () => presence.filter((item) => item.sessionId !== sessionId),
+    [presence, sessionId]
+  );
+
+  const formatPresenceName = (participant: PresenceParticipant) => {
+    if (participant.sessionId === sessionId) return "You";
+    return participant.displayName?.trim() || "Teammate";
+  };
+
   if (!workflowId) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-gray-100">
@@ -792,6 +949,36 @@ export default function WorkflowBuilderPage() {
               >
                 {workflow.status}
               </span>
+              {presence.length > 0 && (
+                <div className="flex flex-wrap items-center gap-2 text-xs text-gray-500">
+                  <span>Active now:</span>
+                  {selfPresence && (
+                    <span
+                      className="inline-flex items-center gap-1 rounded-full border border-gray-200 bg-white px-2 py-1"
+                      style={{ borderColor: selfPresence.color ?? undefined }}
+                    >
+                      <span
+                        className="inline-block h-2 w-2 rounded-full"
+                        style={{ backgroundColor: selfPresence.color ?? "#10b981" }}
+                      />
+                      {formatPresenceName(selfPresence)}
+                    </span>
+                  )}
+                  {otherPresence.map((participant) => (
+                    <span
+                      key={participant.sessionId}
+                      className="inline-flex items-center gap-1 rounded-full border border-gray-200 bg-white px-2 py-1"
+                      style={{ borderColor: participant.color ?? undefined }}
+                    >
+                      <span
+                        className="inline-block h-2 w-2 rounded-full"
+                        style={{ backgroundColor: participant.color ?? "#6366f1" }}
+                      />
+                      {formatPresenceName(participant)}
+                    </span>
+                  ))}
+                </div>
+              )}
             </div>
             <div className="mt-3 flex flex-col gap-2 lg:flex-row lg:items-center lg:gap-4">
               <input
