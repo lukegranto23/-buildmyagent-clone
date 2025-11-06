@@ -112,7 +112,7 @@ model Workflow {
   updatedAt   DateTime @updatedAt
   executions  WorkflowExecution[]
   versions    WorkflowVersion[] @relation("WorkflowVersions")
-  activeVersionId String?
+  activeVersionId String? @unique
   activeVersion   WorkflowVersion? @relation("ActiveWorkflowVersion", fields: [activeVersionId], references: [id])
   presence    WorkflowPresence[]
 
