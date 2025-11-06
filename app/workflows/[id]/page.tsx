@@ -63,6 +63,29 @@ type NodeLibraryItem = {
   defaultConfig?: Record<string, any>;
 };
 
+type ExecutionLogEntry = {
+  id: string;
+  level: string;
+  message: string;
+  nodeId: string | null;
+  data: unknown;
+  createdAt: string;
+};
+
+type ExecutionSummary = {
+  id: string;
+  status: string;
+  startedAt: string;
+  completedAt: string | null;
+  error: string | null;
+  input: unknown;
+  output: unknown;
+};
+
+type ExecutionDetail = ExecutionSummary & {
+  logs: ExecutionLogEntry[];
+};
+
 const NODE_LIBRARY: NodeLibraryItem[] = [
   {
     type: "trigger",
@@ -220,6 +243,11 @@ export default function WorkflowBuilderPage() {
   const [isRunning, setIsRunning] = useState(false);
   const [testPayload, setTestPayload] = useState<string>(JSON.stringify({ contact: { name: "Jane Doe" } }, null, 2));
   const [runResult, setRunResult] = useState<string>("");
+  const [history, setHistory] = useState<ExecutionSummary[]>([]);
+  const [selectedExecutionId, setSelectedExecutionId] = useState<string | null>(null);
+  const [selectedExecution, setSelectedExecution] = useState<ExecutionDetail | null>(null);
+  const [isHistoryLoading, setIsHistoryLoading] = useState(false);
+  const [historyError, setHistoryError] = useState<string | null>(null);
 
   const fetchWorkflow = useCallback(async () => {
     if (!workflowId) return;
@@ -246,6 +274,10 @@ export default function WorkflowBuilderPage() {
   useEffect(() => {
     void fetchWorkflow();
   }, [fetchWorkflow]);
+
+  useEffect(() => {
+    void loadHistory({ selectLatest: true });
+  }, [loadHistory]);
 
   const onNodesChange = useCallback(
     (changes: NodeChange[]) => setNodes((nds) => applyNodeChanges(changes, nds)),
@@ -279,6 +311,67 @@ export default function WorkflowBuilderPage() {
       prev.map((node) => (node.id === nodeId ? { ...node, data: updater(node.data as WorkflowNodeData) } : node))
     );
   };
+
+  const fetchExecutionDetail = useCallback(
+    async (executionId: string) => {
+      if (!workflowId) return;
+
+      setSelectedExecutionId(executionId);
+      setSelectedExecution(null);
+
+      try {
+        const response = await fetch(`/api/workflows/${workflowId}/executions/${executionId}/logs`);
+        const body = await response.json().catch(() => null);
+
+        if (!response.ok) {
+          throw new Error(body?.error ?? "Failed to load execution detail");
+        }
+
+        setSelectedExecution(body as ExecutionDetail);
+      } catch (err) {
+        console.error(err);
+        window.alert(err instanceof Error ? err.message : "Unable to load execution detail");
+      }
+    },
+    [workflowId]
+  );
+
+  const loadHistory = useCallback(
+    async (options: { selectLatest?: boolean } = {}) => {
+      if (!workflowId) return;
+
+      setIsHistoryLoading(true);
+      setHistoryError(null);
+
+      try {
+        const response = await fetch(`/api/workflows/${workflowId}/executions?limit=10`);
+        const body = await response.json().catch(() => null);
+
+        if (!response.ok) {
+          throw new Error(body?.error ?? "Failed to load execution history");
+        }
+
+        const executions = Array.isArray(body) ? (body as ExecutionSummary[]) : [];
+        setHistory(executions);
+
+        if (options.selectLatest && executions.length > 0) {
+          await fetchExecutionDetail(executions[0].id);
+        } else if (
+          selectedExecutionId &&
+          !executions.some((execution) => execution.id === selectedExecutionId)
+        ) {
+          setSelectedExecutionId(null);
+          setSelectedExecution(null);
+        }
+      } catch (err) {
+        console.error(err);
+        setHistoryError(err instanceof Error ? err.message : "Unable to load execution history");
+      } finally {
+        setIsHistoryLoading(false);
+      }
+    },
+    [fetchExecutionDetail, selectedExecutionId, workflowId]
+  );
 
   const handleAddNode = (item: NodeLibraryItem) => {
     const id = `${item.type}-${Date.now()}`;
@@ -344,21 +437,30 @@ export default function WorkflowBuilderPage() {
       return;
     }
 
-    setIsRunning(true);
-    setRunResult("");
-    try {
-      const response = await fetch(`/api/workflows/${workflowId}/execute`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ input }),
-      });
+      setIsRunning(true);
+      setRunResult("");
+      try {
+        const response = await fetch(`/api/workflows/${workflowId}/execute`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ input }),
+        });
 
-      const body = await response.json();
-      if (!response.ok) {
-        throw new Error(body?.error ?? "Workflow execution failed");
-      }
+        const body = await response.json();
+        if (!response.ok) {
+          throw new Error(body?.error ?? "Workflow execution failed");
+        }
 
-      setRunResult(JSON.stringify(body, null, 2));
+        setRunResult(JSON.stringify(body, null, 2));
+
+        if (body?.executionId) {
+          await fetchExecutionDetail(body.executionId as string);
+        } else {
+          setSelectedExecutionId(null);
+          setSelectedExecution(null);
+        }
+
+        await loadHistory();
     } catch (err) {
       console.error(err);
       setRunResult(err instanceof Error ? err.message : "Failed to run workflow");
@@ -384,6 +486,41 @@ export default function WorkflowBuilderPage() {
 
   const updateWorkflowMeta = (updates: Partial<WorkflowRecord>) => {
     setWorkflow((prev) => (prev ? { ...prev, ...updates } : prev));
+  };
+
+  const getExecutionStatusClass = (status: string) => {
+    const normalized = status?.toLowerCase();
+    if (normalized === "completed") return "bg-emerald-100 text-emerald-700";
+    if (normalized === "failed" || normalized === "error") return "bg-red-100 text-red-700";
+    if (normalized === "running" || normalized === "in-progress") return "bg-amber-100 text-amber-700";
+    return "bg-gray-200 text-gray-700";
+  };
+
+  const formatDateTime = (value?: string | null) => {
+    if (!value) return "—";
+    try {
+      return new Date(value).toLocaleString("en-US", {
+        dateStyle: "short",
+        timeStyle: "short",
+      });
+    } catch (error) {
+      return value;
+    }
+  };
+
+  const formatJson = (value: unknown) => {
+    if (value === undefined) return "undefined";
+    try {
+      return typeof value === "string" ? value : JSON.stringify(value, null, 2);
+    } catch (error) {
+      return String(value);
+    }
+  };
+
+  const summarizeJson = (value: unknown) => {
+    const text = formatJson(value);
+    const normalized = typeof text === "string" ? text : String(text);
+    return normalized.length > 160 ? `${normalized.slice(0, 157)}...` : normalized;
   };
 
   if (!workflowId) {
@@ -531,33 +668,168 @@ export default function WorkflowBuilderPage() {
               }
               onDelete={() => handleDeleteEdge(selectedEdge.id)}
             />
-          ) : (
-            <div className="flex h-full flex-col justify-between">
-              <div>
-                <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">Select a node</p>
-                <p className="mt-2 text-sm text-gray-600">
-                  Click a node to configure prompts, HTTP requests, delays, and more. Add nodes from the library on the left.
-                </p>
-              </div>
-              <div className="mt-6 rounded-2xl border border-gray-200 bg-gray-50 p-3 text-xs text-gray-500">
-                <p className="font-semibold text-gray-700">Preview input for testing</p>
-                <textarea
-                  value={testPayload}
-                  onChange={(event) => setTestPayload(event.target.value)}
-                  rows={8}
-                  className="mt-2 w-full rounded-lg border border-gray-200 px-3 py-2 font-mono text-xs focus:outline-none focus:ring-2 focus:ring-blue-500"
-                />
-                {runResult && (
-                  <div className="mt-3">
-                    <p className="font-semibold text-gray-700">Last run</p>
-                    <pre className="mt-1 max-h-48 overflow-y-auto rounded-lg border border-gray-200 bg-white p-3 text-xs text-gray-700">
-                      {runResult}
-                    </pre>
+            ) : (
+              <div className="flex h-full flex-col">
+                <div className="flex-1 space-y-5 overflow-y-auto pr-1">
+                  <div>
+                    <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">Select a node</p>
+                    <p className="mt-2 text-sm text-gray-600">
+                      Click a node to configure prompts, HTTP requests, delays, and more. Add nodes from the library on the left.
+                    </p>
                   </div>
-                )}
+
+                  <div className="rounded-2xl border border-gray-200 bg-gray-50 p-4 text-xs text-gray-600">
+                    <div className="flex items-center justify-between text-sm">
+                      <p className="font-semibold text-gray-700">Test payload</p>
+                      <span className="text-xs text-gray-400">Used with “Run test”</span>
+                    </div>
+                    <textarea
+                      value={testPayload}
+                      onChange={(event) => setTestPayload(event.target.value)}
+                      rows={8}
+                      className="mt-2 w-full rounded-lg border border-gray-200 px-3 py-2 font-mono text-xs focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    />
+                    {runResult && (
+                      <div className="mt-3">
+                        <p className="font-semibold text-gray-700">Last response</p>
+                        <pre className="mt-1 max-h-48 overflow-y-auto rounded-lg border border-gray-200 bg-white p-3 text-xs text-gray-700">
+                          {runResult}
+                        </pre>
+                      </div>
+                    )}
+                  </div>
+
+                  <div>
+                    <div className="flex items-center justify-between">
+                      <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">Recent runs</p>
+                      <Button variant="ghost" size="sm" onClick={() => void loadHistory()} disabled={isHistoryLoading}>
+                        {isHistoryLoading ? "Loading…" : "Refresh"}
+                      </Button>
+                    </div>
+                    {historyError && (
+                      <div className="mt-2 rounded-xl border border-red-200 bg-red-50 p-3 text-xs text-red-700">
+                        {historyError}
+                      </div>
+                    )}
+                    <div className="mt-3 space-y-2">
+                      {isHistoryLoading
+                        ? Array.from({ length: 3 }).map((_, index) => (
+                            <div key={index} className="h-12 animate-pulse rounded-2xl border border-gray-200 bg-gray-100" />
+                          ))
+                        : history.map((execution) => (
+                              <button
+                                key={execution.id}
+                                onClick={() => void fetchExecutionDetail(execution.id)}
+                              className={`w-full rounded-2xl border p-3 text-left transition ${
+                                selectedExecutionId === execution.id
+                                  ? "border-blue-500 bg-blue-50 shadow-sm"
+                                  : "border-gray-200 hover:border-blue-300 hover:bg-blue-50"
+                              }`}
+                            >
+                              <div className="flex items-center justify-between">
+                                <span
+                                  className={`rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase ${getExecutionStatusClass(
+                                    execution.status
+                                  )}`}
+                                >
+                                  {execution.status}
+                                </span>
+                                <span className="text-xs text-gray-500">{formatDateTime(execution.startedAt)}</span>
+                              </div>
+                              {execution.error ? (
+                                <p className="mt-2 text-xs text-red-600">Error: {execution.error}</p>
+                              ) : (
+                                <p className="mt-2 text-xs text-gray-600">
+                                  {summarizeJson(execution.output) || "No output"}
+                                </p>
+                              )}
+                            </button>
+                          ))}
+                    </div>
+                    {!isHistoryLoading && history.length === 0 && (
+                      <div className="mt-3 rounded-xl border border-dashed border-gray-200 bg-gray-50 p-4 text-xs text-gray-500">
+                        No executions yet. Run a test to see the workflow in action.
+                      </div>
+                    )}
+                  </div>
+
+                  {selectedExecution && (
+                    <div className="rounded-2xl border border-gray-200 bg-gray-50 p-4 text-xs text-gray-600">
+                      <div className="flex items-start justify-between">
+                        <div>
+                          <p className="text-sm font-semibold text-gray-900">Execution detail</p>
+                          <p className="text-xs text-gray-500">Started {formatDateTime(selectedExecution.startedAt)}</p>
+                          <p className="text-xs text-gray-500">
+                            Completed {formatDateTime(selectedExecution.completedAt)}
+                          </p>
+                        </div>
+                        <span
+                          className={`rounded-full px-3 py-1 text-xs font-semibold uppercase ${getExecutionStatusClass(
+                            selectedExecution.status
+                          )}`}
+                        >
+                          {selectedExecution.status}
+                        </span>
+                      </div>
+
+                      {selectedExecution.error && (
+                        <div className="mt-3 rounded-lg border border-red-200 bg-red-50 p-3 text-xs text-red-700">
+                          {selectedExecution.error}
+                        </div>
+                      )}
+
+                      <div className="mt-4">
+                        <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">Output</p>
+                        <pre className="mt-2 max-h-40 overflow-y-auto rounded-lg border border-gray-200 bg-white p-3 text-xs text-gray-700">
+                          {formatJson(selectedExecution.output)}
+                        </pre>
+                      </div>
+
+                      <div className="mt-4">
+                        <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">Input</p>
+                        <pre className="mt-2 max-h-32 overflow-y-auto rounded-lg border border-gray-200 bg-white p-3 text-xs text-gray-700">
+                          {formatJson(selectedExecution.input)}
+                        </pre>
+                      </div>
+
+                      <div className="mt-4">
+                        <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">Logs</p>
+                        {selectedExecution.logs.length === 0 ? (
+                          <p className="mt-2 text-xs text-gray-500">No log entries recorded.</p>
+                        ) : (
+                          <div className="mt-2 space-y-2 max-h-48 overflow-y-auto">
+                            {selectedExecution.logs.map((log) => (
+                              <div
+                                key={log.id}
+                                className="rounded-xl border border-gray-200 bg-white p-3 text-xs text-gray-700"
+                              >
+                                <div className="flex items-center justify-between">
+                                  <span className="font-semibold text-gray-900">{log.level.toUpperCase()}</span>
+                                  <span className="text-[10px] text-gray-500">
+                                    {formatDateTime(log.createdAt)}
+                                  </span>
+                                </div>
+                                <p className="mt-1 text-xs text-gray-700">{log.message}</p>
+                                {log.nodeId && (
+                                  <p className="mt-1 text-[10px] uppercase tracking-wide text-gray-400">
+                                    Node: {log.nodeId}
+                                  </p>
+                                )}
+                                {log.data && (
+                                  <pre className="mt-2 max-h-32 overflow-y-auto rounded-lg border border-gray-100 bg-gray-50 p-2 text-[11px] text-gray-700">
+                                    {formatJson(log.data)}
+                                  </pre>
+                                )}
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  )}
+                </div>
               </div>
-            </div>
-          )}
+            )}
         </aside>
       </div>
     </div>
