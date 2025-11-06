@@ -6,6 +6,7 @@ import { useParams, useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import ReactFlow, {
   Background,
+  BackgroundVariant,
   Connection,
   Controls,
   Edge,
@@ -342,12 +343,18 @@ export default function WorkflowBuilderPage() {
   }, [fetchWorkflow]);
 
   useEffect(() => {
-    void loadHistory({ selectLatest: true });
-  }, [loadHistory]);
+    if (workflowId) {
+      void loadHistory({ selectLatest: true });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [workflowId]);
 
   useEffect(() => {
-    void loadVersions();
-  }, [loadVersions]);
+    if (workflowId) {
+      void loadVersions();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [workflowId]);
 
 useEffect(() => {
   if (typeof window === "undefined" || !workflowId) return;
@@ -380,9 +387,26 @@ useEffect(() => {
 useEffect(() => {
   if (!workflowId || !sessionId) return;
 
-  void sendHeartbeat();
+  const sendPresenceHeartbeat = async () => {
+    if (!workflowId || !sessionId) return;
+    try {
+      await fetch(`/api/workflows/${workflowId}/presence`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          sessionId,
+          displayName: presenceName,
+          color: presenceColor,
+        }),
+      });
+    } catch (error) {
+      console.error(error);
+    }
+  };
+
+  void sendPresenceHeartbeat();
   heartbeatRef.current = setInterval(() => {
-    void sendHeartbeat();
+    void sendPresenceHeartbeat();
   }, 20_000);
 
   const handleBeforeUnload = () => {
@@ -418,14 +442,33 @@ useEffect(() => {
       console.error(error);
     }
   };
-}, [sendHeartbeat, sessionId, workflowId]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+}, [sessionId, workflowId, presenceName, presenceColor]);
 
 useEffect(() => {
   if (!workflowId) return;
 
-  void fetchPresence();
+  const loadPresence = async () => {
+    if (!workflowId) return;
+    try {
+      const response = await fetch(`/api/workflows/${workflowId}/presence`);
+      const body = await response.json().catch(() => null);
+
+      if (!response.ok) {
+        throw new Error(body?.error ?? "Failed to load presence");
+      }
+
+      if (Array.isArray(body)) {
+        setPresence(body as PresenceParticipant[]);
+      }
+    } catch (error) {
+      console.error(error);
+    }
+  };
+
+  void loadPresence();
   presenceIntervalRef.current = setInterval(() => {
-    void fetchPresence();
+    void loadPresence();
   }, 10_000);
 
   return () => {
@@ -434,7 +477,8 @@ useEffect(() => {
       presenceIntervalRef.current = null;
     }
   };
-}, [fetchPresence, workflowId]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+}, [workflowId]);
 
   const onNodesChange = useCallback(
     (changes: NodeChange[]) => setNodes((nds) => applyNodeChanges(changes, nds)),
@@ -1115,7 +1159,7 @@ useEffect(() => {
             nodeTypes={nodeTypes}
             fitView
           >
-            <Background variant="dots" gap={16} size={1} />
+            <Background variant={BackgroundVariant.Dots} gap={16} size={1} />
             <MiniMap pannable zoomable />
             <Controls />
           </ReactFlow>
@@ -1463,11 +1507,11 @@ useEffect(() => {
                                     Node: {log.nodeId}
                                   </p>
                                 )}
-                                {log.data && (
+                                {log.data ? (
                                   <pre className="mt-2 max-h-32 overflow-y-auto rounded-lg border border-gray-100 bg-gray-50 p-2 text-[11px] text-gray-700">
-                                    {formatJson(log.data)}
+                                    {String(formatJson(log.data))}
                                   </pre>
-                                )}
+                                ) : null}
                               </div>
                             ))}
                           </div>
