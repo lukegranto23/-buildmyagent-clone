@@ -25,6 +25,7 @@ export async function GET(_request: Request, context: { params: { id: string } }
     nodes: safeParse(workflow.nodes, []),
     edges: safeParse(workflow.edges, []),
     metadata: safeParse(workflow.metadata, null),
+    activeVersionId: workflow.activeVersionId,
   });
 }
 
@@ -43,6 +44,7 @@ export async function PUT(request: Request, context: { params: { id: string } })
         ...(data.status && { status: data.status }),
         ...(data.schedule !== undefined && { schedule: data.schedule }),
         ...(data.metadata !== undefined && { metadata: data.metadata ? JSON.stringify(data.metadata) : null }),
+        ...(data.activeVersionId !== undefined && { activeVersionId: data.activeVersionId }),
       },
     });
 
@@ -51,6 +53,7 @@ export async function PUT(request: Request, context: { params: { id: string } })
       nodes: safeParse(workflow.nodes, []),
       edges: safeParse(workflow.edges, []),
       metadata: safeParse(workflow.metadata, null),
+      activeVersionId: workflow.activeVersionId,
     });
   } catch (error) {
     console.error("Failed to update workflow", error);

@@ -111,6 +111,10 @@ model Workflow {
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
   executions  WorkflowExecution[]
+  versions    WorkflowVersion[] @relation("WorkflowVersions")
+  activeVersionId String? @unique
+  activeVersion   WorkflowVersion? @relation("ActiveWorkflowVersion", fields: [activeVersionId], references: [id])
+  presence    WorkflowPresence[]
 
   @@index([agentId])
   @@index([status])
@@ -156,5 +160,36 @@ model Integration {
   updatedAt   DateTime @updatedAt
 
   @@index([type, status])
+}
+
+model WorkflowVersion {
+  id            String   @id @default(cuid())
+  workflowId    String
+  workflow      Workflow @relation("WorkflowVersions", fields: [workflowId], references: [id], onDelete: Cascade)
+  workflowActive Workflow? @relation("ActiveWorkflowVersion")
+  versionNumber Int
+  name          String?
+  description   String?
+  notes         String?
+  nodes         String
+  edges         String
+  metadata      String?
+  createdAt     DateTime @default(now())
+
+  @@unique([workflowId, versionNumber])
+  @@index([workflowId, versionNumber])
+}
+
+model WorkflowPresence {
+  id         String   @id @default(cuid())
+  workflowId String
+  workflow   Workflow @relation(fields: [workflowId], references: [id], onDelete: Cascade)
+  sessionId  String
+  displayName String?
+  color      String?
+  lastSeen   DateTime @default(now())
+
+  @@unique([workflowId, sessionId])
+  @@index([workflowId, lastSeen])
 }
 
