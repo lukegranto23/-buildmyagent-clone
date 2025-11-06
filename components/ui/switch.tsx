@@ -1,15 +1,15 @@
 "use client";
 
-import { forwardRef, type InputHTMLAttributes } from "react";
+import { forwardRef, type ButtonHTMLAttributes } from "react";
 import { clsx } from "clsx";
 
-export interface SwitchProps extends Omit<InputHTMLAttributes<HTMLInputElement>, "type" | "onChange"> {
+export interface SwitchProps extends Omit<ButtonHTMLAttributes<HTMLButtonElement>, "onChange"> {
   checked: boolean;
   onCheckedChange?: (checked: boolean) => void;
 }
 
 export const Switch = forwardRef<HTMLInputElement, SwitchProps>(function Switch(
-  { checked, onCheckedChange, className, disabled, ...props },
+  { checked, onCheckedChange, className, disabled, id, ...props },
   ref
 ) {
   return (
@@ -24,6 +24,7 @@ export const Switch = forwardRef<HTMLInputElement, SwitchProps>(function Switch(
         disabled ? "cursor-not-allowed opacity-60" : "cursor-pointer",
         className
       )}
+      id={id}
       {...props}
     >
       <span
@@ -32,7 +33,7 @@ export const Switch = forwardRef<HTMLInputElement, SwitchProps>(function Switch(
           checked ? "translate-x-5" : "translate-x-0"
         )}
       />
-      <input ref={ref} type="checkbox" className="sr-only" checked={checked} readOnly />
+      <input ref={ref} id={id} type="checkbox" className="sr-only" checked={checked} readOnly />
     </button>
   );
 });

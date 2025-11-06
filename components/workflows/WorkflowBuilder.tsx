@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import ReactFlow, {
   Background,
+  BackgroundVariant,
   type Connection,
   Controls,
   MiniMap,
@@ -82,7 +83,7 @@ const DEFAULT_GRAPH = buildDefaultGraph();
 const nodeTypes = { workflowNode: WorkflowNode };
 
 export function WorkflowBuilder({ templateId }: WorkflowBuilderProps = {}) {
-  const [nodes, setNodes, onNodesChange] = useNodesState<Node<BuilderNodeData>>(DEFAULT_GRAPH.nodes);
+  const [nodes, setNodes, onNodesChange] = useNodesState<BuilderNodeData>(DEFAULT_GRAPH.nodes);
   const [edges, setEdges, onEdgesChange] = useEdgesState(DEFAULT_GRAPH.edges);
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(
     DEFAULT_GRAPH.nodes[1]?.id ?? DEFAULT_GRAPH.nodes[0]?.id ?? null
@@ -493,7 +494,7 @@ export function WorkflowBuilder({ templateId }: WorkflowBuilderProps = {}) {
             className="rounded-none text-sm"
             nodeTypes={nodeTypes}
           >
-            <Background color="#1e293b" gap={24} variant="dots" />
+            <Background color="#1e293b" gap={24} variant={BackgroundVariant.Dots} />
             <MiniMap pannable zoomable className="!bg-slate-800/80 !text-slate-300" />
             <Controls className="border border-slate-700 !bg-slate-900/80 text-white" />
           </ReactFlow>

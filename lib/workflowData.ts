@@ -446,9 +446,9 @@ export function createNodeId(templateId: string, nodeId: string) {
 
 export function buildNodesFromTemplate(template: WorkflowTemplate, moduleMap: Map<string, WorkflowModule>) {
   return template.nodes.map((node) => {
-    const module = moduleMap.get(node.moduleId);
-    const defaults = module?.fields.reduce((acc, field) => {
-      const value = module?.defaults[field.id];
+    const moduleDef = moduleMap.get(node.moduleId);
+    const defaults = moduleDef?.fields.reduce((acc, field) => {
+      const value = moduleDef?.defaults[field.id];
       acc[field.id] = value === undefined ? "" : String(value);
       return acc;
     }, {} as Record<string, string>) ?? {};
@@ -459,15 +459,15 @@ export function buildNodesFromTemplate(template: WorkflowTemplate, moduleMap: Ma
       position: { x: node.x, y: node.y },
       data: {
         moduleId: node.moduleId,
-        title: module?.title ?? "Module",
-        subtitle: module?.subtitle,
-        description: module?.description,
-        variant: module?.variant ?? "utility",
+        title: moduleDef?.title ?? "Module",
+        subtitle: moduleDef?.subtitle,
+        description: moduleDef?.description,
+        variant: moduleDef?.variant ?? "utility",
         status: node.status ?? "draft",
-        inputs: module?.inputs ?? 1,
-        outputs: module?.outputs ?? 1,
-        checklist: module?.checklist,
-        metrics: module?.metrics,
+        inputs: moduleDef?.inputs ?? 1,
+        outputs: moduleDef?.outputs ?? 1,
+        checklist: moduleDef?.checklist,
+        metrics: moduleDef?.metrics,
         config: {
           ...defaults,
           ...(node.config ?? {}),

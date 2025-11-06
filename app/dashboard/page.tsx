@@ -181,10 +181,10 @@ export default function DashboardPage() {
                   <div key={index} className="h-16 animate-pulse rounded-2xl bg-gray-100" />
                 ))}
               </div>
-            ) : sessions.length === 0 ? (
-              <div className="rounded-2xl border border-dashed border-gray-300 bg-gray-50 p-8 text-center text-sm text-gray-600">
-                No conversations yet. Once you deploy an agent and start receiving calls/texts, they'll show up here.
-              </div>
+              ) : sessions.length === 0 ? (
+                <div className="rounded-2xl border border-dashed border-gray-300 bg-gray-50 p-8 text-center text-sm text-gray-600">
+                  No conversations yet. Once you deploy an agent and start receiving calls/texts, they&apos;ll show up here.
+                </div>
             ) : (
               <div className="space-y-3">
                 {sessions.map((session) => (
@@ -234,10 +234,10 @@ export default function DashboardPage() {
                   <div key={index} className="h-16 animate-pulse rounded-2xl bg-gray-100" />
                 ))}
               </div>
-            ) : appointments.length === 0 ? (
-              <div className="rounded-2xl border border-dashed border-gray-300 bg-gray-50 p-8 text-center text-sm text-gray-600">
-                No appointments scheduled yet. When agents book slots during calls/texts, they'll appear here.
-              </div>
+              ) : appointments.length === 0 ? (
+                <div className="rounded-2xl border border-dashed border-gray-300 bg-gray-50 p-8 text-center text-sm text-gray-600">
+                  No appointments scheduled yet. When agents book slots during calls/texts, they&apos;ll appear here.
+                </div>
             ) : (
               <div className="space-y-3">
                 {appointments.map((appointment) => (

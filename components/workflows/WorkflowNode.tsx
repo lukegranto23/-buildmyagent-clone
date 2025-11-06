@@ -27,7 +27,7 @@ type WorkflowNodeData = {
   metrics?: Array<{ label: string; value: string }>;
 };
 
-const variantIconMap: Record<Required<WorkflowNodeData["variant"]>, ReactNode> = {
+const variantIconMap: Record<NonNullable<WorkflowNodeData["variant"]>, ReactNode> = {
   trigger: <PhoneIncoming className="h-4 w-4" strokeWidth={2.5} />,
   ai: <Bot className="h-4 w-4" strokeWidth={2.5} />,
   action: <Bolt className="h-4 w-4" strokeWidth={2.5} />,
@@ -42,7 +42,7 @@ const statusPillMap: Record<string, string> = {
   error: "bg-rose-100 text-rose-700",
 };
 
-const variantThemeMap: Record<Required<WorkflowNodeData["variant"]>, {
+const variantThemeMap: Record<NonNullable<WorkflowNodeData["variant"]>, {
   border: string;
   header: string;
   glow: string;

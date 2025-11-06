@@ -98,7 +98,12 @@ async function executeHttp(node: WorkflowNode, context: ExecutionContext): Promi
     body: body ? JSON.stringify(resolveTemplate(body as string, context.variables)) : undefined,
   });
 
-  const data = await response.json().catch(() => ({ text: await response.text() }));
+  let data: unknown;
+  try {
+    data = await response.json();
+  } catch {
+    data = { text: await response.text() };
+  }
   return data;
 }
 

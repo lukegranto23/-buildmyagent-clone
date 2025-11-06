@@ -51,7 +51,7 @@ export function hydrateAgentRecord(record: AgentRecord): RuntimeAgent {
 
 export function mapMessagesToChat(records: MessageRecord[]): ChatMessage[] {
   return records
-    .map((message) => ({
+    .map((message): ChatMessage => ({
       role: message.role === "assistant" ? "assistant" : "user",
       content: message.content,
     }))

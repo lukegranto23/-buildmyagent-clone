@@ -3,7 +3,9 @@
 import { forwardRef, type InputHTMLAttributes } from "react";
 import { clsx } from "clsx";
 
-export interface SliderProps extends InputHTMLAttributes<HTMLInputElement> {
+type NativeSliderProps = Omit<InputHTMLAttributes<HTMLInputElement>, "value" | "onChange">;
+
+export interface SliderProps extends NativeSliderProps {
   value: number[];
   onValueChange?: (value: number[]) => void;
 }

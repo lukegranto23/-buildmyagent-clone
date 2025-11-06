@@ -355,9 +355,9 @@ function CreateAgentPageContent() {
           <h1 className="text-3xl font-bold text-gray-900 sm:text-4xl">
             Package your boomer-ready AI agent
           </h1>
-          <p className="mt-3 text-lg text-gray-600">
-            Finalize the sales kit, scripts, and launch checklist. We'll save everything so you can pitch it, demo it, and onboard a client in under an hour.
-          </p>
+            <p className="mt-3 text-lg text-gray-600">
+              Finalize the sales kit, scripts, and launch checklist. We&apos;ll save everything so you can pitch it, demo it, and onboard a client in under an hour.
+            </p>
         </div>
 
         <div className="grid gap-6 lg:grid-cols-[1.15fr_0.85fr]">
