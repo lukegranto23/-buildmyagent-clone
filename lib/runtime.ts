@@ -11,6 +11,10 @@ export type RuntimeAgent = {
   id: string;
   name: string;
   offerName: string;
+  clientName: string | null;
+  industryId: string;
+  roleId: string;
+  toneId: string;
   description: string | null;
   systemPrompt: string;
   ownerNotes: string | null;
@@ -20,6 +24,18 @@ export type RuntimeAgent = {
   supportPackages: { id?: string; label?: string; [key: string]: unknown }[];
   integrations: string[];
   blueprint: Record<string, unknown>;
+  salesScripts: {
+    phone?: string;
+    sms?: string;
+    email?: string;
+    printBlurb?: string;
+  };
+  handoffChecklist: string[];
+  priceSetup: number;
+  priceRetainer: number;
+  status: string;
+  createdAt: Date;
+  updatedAt: Date;
 };
 
 function safeParse<T>(value: string | null | undefined, fallback: T): T {
@@ -37,6 +53,10 @@ export function hydrateAgentRecord(record: AgentRecord): RuntimeAgent {
     id: record.id,
     name: record.name,
     offerName: record.offerName,
+    clientName: record.clientName ?? null,
+    industryId: record.industryId,
+    roleId: record.roleId,
+    toneId: record.toneId,
     description: record.description ?? null,
     systemPrompt: record.systemPrompt,
     ownerNotes: record.ownerNotes ?? null,
@@ -46,6 +66,13 @@ export function hydrateAgentRecord(record: AgentRecord): RuntimeAgent {
     supportPackages: safeParse(record.supportPackages, []),
     integrations: safeParse<string[]>(record.integrations, []),
     blueprint: safeParse<Record<string, unknown>>(record.blueprint, {}),
+    salesScripts: safeParse(record.salesScripts, {}),
+    handoffChecklist: safeParse<string[]>(record.handoffChecklist, []),
+    priceSetup: record.priceSetup,
+    priceRetainer: record.priceRetainer,
+    status: record.status,
+    createdAt: record.createdAt,
+    updatedAt: record.updatedAt,
   };
 }
 

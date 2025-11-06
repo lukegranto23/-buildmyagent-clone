@@ -1,0 +1,925 @@
+"use client";
+
+import "reactflow/dist/style.css";
+
+import { useParams, useRouter } from "next/navigation";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import ReactFlow, {
+  Background,
+  Connection,
+  Controls,
+  Edge,
+  MiniMap,
+  Node,
+  NodeChange,
+  EdgeChange,
+  addEdge,
+  applyEdgeChanges,
+  applyNodeChanges,
+} from "reactflow";
+
+import { Button } from "@/components/ui/button";
+
+type WorkflowNodeData = {
+  label: string;
+  nodeType: string;
+  description?: string;
+  config?: Record<string, any>;
+  data?: Record<string, any>;
+};
+
+type WorkflowNode = Node<WorkflowNodeData>;
+
+type WorkflowEdge = Edge<{ condition?: string }>;
+
+type WorkflowRecord = {
+  id: string;
+  name: string;
+  description?: string | null;
+  status: string;
+  agentId?: string | null;
+  nodes: Array<{
+    id: string;
+    type: string;
+    label: string;
+    position: { x: number; y: number };
+    data?: Record<string, any>;
+    config?: Record<string, any>;
+  }>;
+  edges: Array<{
+    id: string;
+    source: string;
+    target: string;
+    sourceHandle?: string | null;
+    targetHandle?: string | null;
+    condition?: string | null;
+  }>;
+};
+
+type NodeLibraryItem = {
+  type: string;
+  label: string;
+  description: string;
+  defaultConfig?: Record<string, any>;
+};
+
+const NODE_LIBRARY: NodeLibraryItem[] = [
+  {
+    type: "trigger",
+    label: "Trigger",
+    description: "Start the workflow when a channel event fires (voice, SMS, webhook).",
+    defaultConfig: { channel: "voice", event: "inbound_call" },
+  },
+  {
+    type: "condition",
+    label: "Condition",
+    description: "Branch the flow using a simple expression (e.g. last_result == 'booked').",
+    defaultConfig: { condition: "{{trigger_result.status}} == 'booked'" },
+  },
+  {
+    type: "http",
+    label: "HTTP Request",
+    description: "Send or receive data from external services via REST APIs.",
+    defaultConfig: {
+      url: "https://api.example.com/endpoint",
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: { message: "{{conversation.lastMessage}}" },
+    },
+  },
+  {
+    type: "transform",
+    label: "Transform",
+    description: "Map values into a new object for downstream nodes.",
+    defaultConfig: {
+      mapping: {
+        fullName: "{{contact.first}} {{contact.last}}",
+        lastMessage: "{{conversation.lastMessage}}",
+      },
+    },
+  },
+  {
+    type: "email",
+    label: "Email",
+    description: "Send an email handoff or recap to a team member.",
+    defaultConfig: {
+      to: "owner@example.com",
+      subject: "AI agent conversation summary",
+      body: "Conversation transcript: {{conversation.summary}}",
+    },
+  },
+  {
+    type: "slack",
+    label: "Slack",
+    description: "Drop a note in Slack with the latest update or alert.",
+    defaultConfig: {
+      channel: "#ai-agent-updates",
+      message: "{{agent.name}} booked an appointment for {{contact.name}}",
+    },
+  },
+  {
+    type: "delay",
+    label: "Delay",
+    description: "Pause the workflow for a set number of milliseconds.",
+    defaultConfig: { duration: 60000 },
+  },
+  {
+    type: "loop",
+    label: "Loop",
+    description: "Iterate over items (e.g. follow-up sequence) and run nested nodes.",
+    defaultConfig: {
+      items: ["{{appointment.followUps}}"],
+      variable: "followUp",
+    },
+  },
+];
+
+const statusOptions = [
+  { value: "draft", label: "Draft" },
+  { value: "active", label: "Active" },
+  { value: "paused", label: "Paused" },
+];
+
+function WorkflowNodeCard({ data }: { data: WorkflowNodeData }) {
+  return (
+    <div className="rounded-xl border border-gray-300 bg-white px-4 py-3 shadow-sm">
+      <p className="text-xs uppercase tracking-wide text-gray-400">{data.nodeType}</p>
+      <p className="text-sm font-semibold text-gray-900">{data.label}</p>
+      {data.description && <p className="mt-1 text-xs text-gray-500">{data.description}</p>}
+    </div>
+  );
+}
+
+const nodeTypes = { workflowNode: WorkflowNodeCard };
+
+function serializeNodes(nodes: WorkflowNode[]): WorkflowRecord["nodes"] {
+  return nodes.map((node) => ({
+    id: node.id,
+    type: node.data?.nodeType ?? "action",
+    label: node.data?.label ?? "Step",
+    position: node.position,
+    data: node.data?.data ?? {},
+    config: node.data?.config ?? {},
+  }));
+}
+
+function serializeEdges(edges: WorkflowEdge[]): WorkflowRecord["edges"] {
+  return edges.map((edge) => ({
+    id: edge.id,
+    source: edge.source,
+    target: edge.target,
+    sourceHandle: edge.sourceHandle,
+    targetHandle: edge.targetHandle,
+    condition: edge.data?.condition ?? null,
+  }));
+}
+
+function hydrateNodes(payload: WorkflowRecord["nodes"]): WorkflowNode[] {
+  if (!Array.isArray(payload)) return [];
+  return payload.map((node, index) => ({
+    id: node.id ?? `node-${index}`,
+    type: "workflowNode",
+    position: node.position ?? { x: 150 + index * 40, y: 120 + index * 40 },
+    data: {
+      label: node.label ?? node.type,
+      nodeType: node.type ?? "action",
+      description:
+        (node.data?.description as string | undefined) ??
+        NODE_LIBRARY.find((item) => item.type === node.type)?.description,
+      config: node.config ?? {},
+      data: node.data ?? {},
+    },
+  }));
+}
+
+function hydrateEdges(payload: WorkflowRecord["edges"]): WorkflowEdge[] {
+  if (!Array.isArray(payload)) return [];
+  return payload.map((edge) => ({
+    id: edge.id,
+    source: edge.source,
+    target: edge.target,
+    sourceHandle: edge.sourceHandle ?? undefined,
+    targetHandle: edge.targetHandle ?? undefined,
+    data: edge.condition ? { condition: edge.condition } : {},
+  }));
+}
+
+export default function WorkflowBuilderPage() {
+  const params = useParams<{ id: string }>();
+  const router = useRouter();
+  const workflowId = params?.id;
+
+  const [workflow, setWorkflow] = useState<WorkflowRecord | null>(null);
+  const [nodes, setNodes] = useState<WorkflowNode[]>([]);
+  const [edges, setEdges] = useState<WorkflowEdge[]>([]);
+  const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
+  const [selectedEdgeId, setSelectedEdgeId] = useState<string | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [isSaving, setIsSaving] = useState(false);
+  const [isRunning, setIsRunning] = useState(false);
+  const [testPayload, setTestPayload] = useState<string>(JSON.stringify({ contact: { name: "Jane Doe" } }, null, 2));
+  const [runResult, setRunResult] = useState<string>("");
+
+  const fetchWorkflow = useCallback(async () => {
+    if (!workflowId) return;
+    setIsLoading(true);
+    setError(null);
+
+    try {
+      const response = await fetch(`/api/workflows/${workflowId}`);
+      if (!response.ok) {
+        throw new Error("Failed to load workflow");
+      }
+      const payload = (await response.json()) as WorkflowRecord;
+      setWorkflow(payload);
+      setNodes(hydrateNodes(payload.nodes));
+      setEdges(hydrateEdges(payload.edges));
+    } catch (err) {
+      console.error(err);
+      setError(err instanceof Error ? err.message : "Unable to load workflow");
+    } finally {
+      setIsLoading(false);
+    }
+  }, [workflowId]);
+
+  useEffect(() => {
+    void fetchWorkflow();
+  }, [fetchWorkflow]);
+
+  const onNodesChange = useCallback(
+    (changes: NodeChange[]) => setNodes((nds) => applyNodeChanges(changes, nds)),
+    []
+  );
+  const onEdgesChange = useCallback(
+    (changes: EdgeChange[]) => setEdges((eds) => applyEdgeChanges(changes, eds)),
+    []
+  );
+
+  const onConnect = useCallback(
+    (connection: Connection) =>
+      setEdges((eds) =>
+        addEdge(
+          {
+            ...connection,
+            id: `${connection.source}-${connection.target}-${Date.now()}`,
+            data: {},
+          },
+          eds
+        )
+      ),
+    []
+  );
+
+  const selectedNode = useMemo(() => nodes.find((node) => node.id === selectedNodeId) ?? null, [nodes, selectedNodeId]);
+  const selectedEdge = useMemo(() => edges.find((edge) => edge.id === selectedEdgeId) ?? null, [edges, selectedEdgeId]);
+
+  const updateNodeData = (nodeId: string, updater: (data: WorkflowNodeData) => WorkflowNodeData) => {
+    setNodes((prev) =>
+      prev.map((node) => (node.id === nodeId ? { ...node, data: updater(node.data as WorkflowNodeData) } : node))
+    );
+  };
+
+  const handleAddNode = (item: NodeLibraryItem) => {
+    const id = `${item.type}-${Date.now()}`;
+    const newNode: WorkflowNode = {
+      id,
+      type: "workflowNode",
+      position: { x: 240, y: 100 + nodes.length * 60 },
+      data: {
+        label: item.label,
+        nodeType: item.type,
+        description: item.description,
+        config: item.defaultConfig ? JSON.parse(JSON.stringify(item.defaultConfig)) : {},
+        data: {},
+      },
+    };
+    setNodes((prev) => [...prev, newNode]);
+    setSelectedNodeId(id);
+  };
+
+  const handleSave = async () => {
+    if (!workflow || !workflowId) return;
+    setIsSaving(true);
+    try {
+      const payload = {
+        name: workflow.name,
+        description: workflow.description,
+        status: workflow.status,
+        nodes: serializeNodes(nodes),
+        edges: serializeEdges(edges),
+      };
+
+      const response = await fetch(`/api/workflows/${workflowId}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+
+      if (!response.ok) {
+        const body = await response.json().catch(() => null);
+        throw new Error(body?.error ?? "Failed to save workflow");
+      }
+
+      const latest = (await response.json()) as WorkflowRecord;
+      setWorkflow(latest);
+      setNodes(hydrateNodes(latest.nodes));
+      setEdges(hydrateEdges(latest.edges));
+      window.alert("Workflow saved");
+    } catch (err) {
+      console.error(err);
+      window.alert(err instanceof Error ? err.message : "Unable to save workflow");
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const handleRunTest = async () => {
+    if (!workflowId) return;
+    let input: Record<string, any> = {};
+    try {
+      input = testPayload.trim() ? JSON.parse(testPayload) : {};
+    } catch (error) {
+      window.alert("Test payload must be valid JSON");
+      return;
+    }
+
+    setIsRunning(true);
+    setRunResult("");
+    try {
+      const response = await fetch(`/api/workflows/${workflowId}/execute`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ input }),
+      });
+
+      const body = await response.json();
+      if (!response.ok) {
+        throw new Error(body?.error ?? "Workflow execution failed");
+      }
+
+      setRunResult(JSON.stringify(body, null, 2));
+    } catch (err) {
+      console.error(err);
+      setRunResult(err instanceof Error ? err.message : "Failed to run workflow");
+    } finally {
+      setIsRunning(false);
+    }
+  };
+
+  const handleDeleteNode = (nodeId: string) => {
+    setNodes((prev) => prev.filter((node) => node.id !== nodeId));
+    setEdges((prev) => prev.filter((edge) => edge.source !== nodeId && edge.target !== nodeId));
+    if (selectedNodeId === nodeId) {
+      setSelectedNodeId(null);
+    }
+  };
+
+  const handleDeleteEdge = (edgeId: string) => {
+    setEdges((prev) => prev.filter((edge) => edge.id !== edgeId));
+    if (selectedEdgeId === edgeId) {
+      setSelectedEdgeId(null);
+    }
+  };
+
+  const updateWorkflowMeta = (updates: Partial<WorkflowRecord>) => {
+    setWorkflow((prev) => (prev ? { ...prev, ...updates } : prev));
+  };
+
+  if (!workflowId) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-gray-100">
+        <div className="rounded-3xl bg-white px-6 py-4 text-sm text-gray-600 shadow">Workflow ID missing.</div>
+      </div>
+    );
+  }
+
+  if (isLoading) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-gray-100">
+        <div className="rounded-3xl bg-white px-6 py-4 text-sm text-gray-600 shadow">Loading builder…</div>
+      </div>
+    );
+  }
+
+  if (!workflow) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-gray-100">
+        <div className="rounded-3xl bg-white px-6 py-4 text-sm text-red-600 shadow">{error ?? "Workflow not found"}</div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="flex min-h-screen flex-col bg-gray-100">
+      <header className="border-b bg-white">
+        <div className="container mx-auto flex flex-col gap-4 px-4 py-5 lg:flex-row lg:items-center lg:justify-between">
+          <div className="flex-1">
+            <div className="flex flex-wrap items-center gap-3">
+              <Button variant="ghost" size="sm" onClick={() => router.push("/workflows")}>⟵ Back to workflows</Button>
+              <span
+                className={`rounded-full px-3 py-1 text-xs font-semibold uppercase ${
+                  workflow.status === "active"
+                    ? "bg-emerald-100 text-emerald-700"
+                    : workflow.status === "paused"
+                    ? "bg-amber-100 text-amber-700"
+                    : "bg-gray-200 text-gray-700"
+                }`}
+              >
+                {workflow.status}
+              </span>
+            </div>
+            <div className="mt-3 flex flex-col gap-2 lg:flex-row lg:items-center lg:gap-4">
+              <input
+                value={workflow.name}
+                onChange={(event) => updateWorkflowMeta({ name: event.target.value })}
+                className="w-full rounded-lg border border-gray-300 px-3 py-2 text-xl font-semibold text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-500"
+              />
+              <select
+                value={workflow.status}
+                onChange={(event) => updateWorkflowMeta({ status: event.target.value })}
+                className="rounded-lg border border-gray-300 px-3 py-2 text-sm"
+              >
+                {statusOptions.map((option) => (
+                  <option key={option.value} value={option.value}>
+                    {option.label}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <textarea
+              value={workflow.description ?? ""}
+              onChange={(event) => updateWorkflowMeta({ description: event.target.value })}
+              placeholder="Describe what this automation handles."
+              className="mt-3 w-full rounded-lg border border-gray-200 px-3 py-2 text-sm text-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500"
+              rows={2}
+            />
+          </div>
+          <div className="flex flex-wrap items-center gap-3">
+            <Button variant="outline" onClick={() => void fetchWorkflow()}>
+              Reset
+            </Button>
+            <Button variant="outline" onClick={handleSave} disabled={isSaving}>
+              {isSaving ? "Saving..." : "Save"}
+            </Button>
+            <Button onClick={handleRunTest} disabled={isRunning}>
+              {isRunning ? "Running..." : "Run test"}
+            </Button>
+          </div>
+        </div>
+      </header>
+
+      <div className="flex flex-1 overflow-hidden">
+        <aside className="hidden w-64 shrink-0 border-r border-gray-200 bg-white p-4 lg:block">
+          <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">Node library</p>
+          <div className="mt-3 space-y-3">
+            {NODE_LIBRARY.map((item) => (
+              <button
+                key={item.type}
+                onClick={() => handleAddNode(item)}
+                className="w-full rounded-2xl border border-gray-200 bg-gray-50 p-3 text-left text-sm transition hover:border-blue-300 hover:bg-blue-50"
+              >
+                <p className="font-semibold text-gray-900">{item.label}</p>
+                <p className="mt-1 text-xs text-gray-600">{item.description}</p>
+              </button>
+            ))}
+          </div>
+        </aside>
+
+        <main className="flex-1 overflow-hidden">
+          <ReactFlow
+            nodes={nodes}
+            edges={edges}
+            onNodesChange={onNodesChange}
+            onEdgesChange={onEdgesChange}
+            onConnect={onConnect}
+            onNodeClick={(_, node) => {
+              setSelectedNodeId(node.id);
+              setSelectedEdgeId(null);
+            }}
+            onEdgeClick={(_, edge) => {
+              setSelectedEdgeId(edge.id);
+              setSelectedNodeId(null);
+            }}
+            onPaneClick={() => {
+              setSelectedNodeId(null);
+              setSelectedEdgeId(null);
+            }}
+            nodeTypes={nodeTypes}
+            fitView
+          >
+            <Background variant="dots" gap={16} size={1} />
+            <MiniMap pannable zoomable />
+            <Controls />
+          </ReactFlow>
+        </main>
+
+        <aside className="w-full max-w-md shrink-0 border-l border-gray-200 bg-white p-4">
+          {selectedNode ? (
+            <NodeInspector
+              node={selectedNode}
+              onUpdate={(updater) => updateNodeData(selectedNode.id, updater)}
+              onDelete={() => handleDeleteNode(selectedNode.id)}
+            />
+          ) : selectedEdge ? (
+            <EdgeInspector
+              edge={selectedEdge}
+              onUpdate={(updater) =>
+                setEdges((prev) =>
+                  prev.map((edge) => (edge.id === selectedEdge.id ? { ...edge, data: updater(edge.data ?? {}) } : edge))
+                )
+              }
+              onDelete={() => handleDeleteEdge(selectedEdge.id)}
+            />
+          ) : (
+            <div className="flex h-full flex-col justify-between">
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">Select a node</p>
+                <p className="mt-2 text-sm text-gray-600">
+                  Click a node to configure prompts, HTTP requests, delays, and more. Add nodes from the library on the left.
+                </p>
+              </div>
+              <div className="mt-6 rounded-2xl border border-gray-200 bg-gray-50 p-3 text-xs text-gray-500">
+                <p className="font-semibold text-gray-700">Preview input for testing</p>
+                <textarea
+                  value={testPayload}
+                  onChange={(event) => setTestPayload(event.target.value)}
+                  rows={8}
+                  className="mt-2 w-full rounded-lg border border-gray-200 px-3 py-2 font-mono text-xs focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+                {runResult && (
+                  <div className="mt-3">
+                    <p className="font-semibold text-gray-700">Last run</p>
+                    <pre className="mt-1 max-h-48 overflow-y-auto rounded-lg border border-gray-200 bg-white p-3 text-xs text-gray-700">
+                      {runResult}
+                    </pre>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+        </aside>
+      </div>
+    </div>
+  );
+}
+
+function NodeInspector({
+  node,
+  onUpdate,
+  onDelete,
+}: {
+  node: WorkflowNode;
+  onUpdate: (updater: (data: WorkflowNodeData) => WorkflowNodeData) => void;
+  onDelete: () => void;
+}) {
+  const data = node.data ?? { label: node.type, nodeType: "action", config: {} };
+
+  const handleFieldChange = (key: keyof WorkflowNodeData, value: any) => {
+    onUpdate((prev) => ({ ...prev, [key]: value }));
+  };
+
+  const handleConfigChange = (key: string, value: any) => {
+    onUpdate((prev) => ({
+      ...prev,
+      config: {
+        ...(prev.config ?? {}),
+        [key]: value,
+      },
+    }));
+  };
+
+  const handleConfigJsonChange = (value: string) => {
+    try {
+      const parsed = value.trim() ? JSON.parse(value) : {};
+      onUpdate((prev) => ({ ...prev, config: parsed }));
+    } catch (error) {
+      window.alert("Config must be valid JSON");
+    }
+  };
+
+  return (
+    <div className="flex h-full flex-col">
+      <div>
+        <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">Node settings</p>
+        <p className="mt-1 text-lg font-semibold text-gray-900">{data.label}</p>
+        <p className="text-xs uppercase tracking-wide text-gray-400">{data.nodeType}</p>
+
+        <label className="mt-4 flex flex-col gap-1 text-sm">
+          <span className="text-xs font-semibold uppercase tracking-wide text-gray-500">Display label</span>
+          <input
+            value={data.label}
+            onChange={(event) => handleFieldChange("label", event.target.value)}
+            className="rounded-lg border border-gray-300 px-3 py-2"
+          />
+        </label>
+
+        <label className="mt-3 flex flex-col gap-1 text-sm">
+          <span className="text-xs font-semibold uppercase tracking-wide text-gray-500">Description</span>
+          <textarea
+            value={data.description ?? ""}
+            onChange={(event) => handleFieldChange("description", event.target.value)}
+            rows={2}
+            className="rounded-lg border border-gray-300 px-3 py-2 text-sm"
+          />
+        </label>
+
+        <NodeTypeSpecificConfig data={data} onConfigChange={handleConfigChange} onConfigJsonChange={handleConfigJsonChange} />
+      </div>
+
+      <div className="mt-auto flex items-center justify-between border-t border-gray-200 pt-4">
+        <button
+          type="button"
+          onClick={onDelete}
+          className="rounded-full border border-red-400 px-3 py-1 text-xs font-semibold text-red-600 hover:bg-red-100"
+        >
+          Delete node
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function NodeTypeSpecificConfig({
+  data,
+  onConfigChange,
+  onConfigJsonChange,
+}: {
+  data: WorkflowNodeData;
+  onConfigChange: (key: string, value: any) => void;
+  onConfigJsonChange: (value: string) => void;
+}) {
+  const config = data.config ?? {};
+
+  switch (data.nodeType) {
+    case "trigger":
+      return (
+        <div className="mt-4 space-y-3">
+          <label className="flex flex-col gap-1 text-sm">
+            <span className="text-xs font-semibold uppercase tracking-wide text-gray-500">Channel</span>
+            <select
+              value={config.channel ?? "voice"}
+              onChange={(event) => onConfigChange("channel", event.target.value)}
+              className="rounded-lg border border-gray-300 px-3 py-2"
+            >
+              <option value="voice">Voice</option>
+              <option value="sms">SMS</option>
+              <option value="webhook">Webhook</option>
+            </select>
+          </label>
+          <label className="flex flex-col gap-1 text-sm">
+            <span className="text-xs font-semibold uppercase tracking-wide text-gray-500">Event</span>
+            <input
+              value={config.event ?? "inbound_call"}
+              onChange={(event) => onConfigChange("event", event.target.value)}
+              className="rounded-lg border border-gray-300 px-3 py-2"
+            />
+          </label>
+        </div>
+      );
+    case "condition":
+      return (
+        <div className="mt-4">
+          <label className="flex flex-col gap-1 text-sm">
+            <span className="text-xs font-semibold uppercase tracking-wide text-gray-500">Expression</span>
+            <input
+              value={config.condition ?? ""}
+              onChange={(event) => onConfigChange("condition", event.target.value)}
+              placeholder="{{context.value}} > 0"
+              className="rounded-lg border border-gray-300 px-3 py-2"
+            />
+          </label>
+        </div>
+      );
+    case "http":
+      return (
+        <div className="mt-4 space-y-3">
+          <label className="flex flex-col gap-1 text-sm">
+            <span className="text-xs font-semibold uppercase tracking-wide text-gray-500">URL</span>
+            <input
+              value={config.url ?? ""}
+              onChange={(event) => onConfigChange("url", event.target.value)}
+              className="rounded-lg border border-gray-300 px-3 py-2"
+            />
+          </label>
+          <label className="flex flex-col gap-1 text-sm">
+            <span className="text-xs font-semibold uppercase tracking-wide text-gray-500">Method</span>
+            <select
+              value={(config.method ?? "POST").toUpperCase()}
+              onChange={(event) => onConfigChange("method", event.target.value)}
+              className="rounded-lg border border-gray-300 px-3 py-2"
+            >
+              <option value="GET">GET</option>
+              <option value="POST">POST</option>
+              <option value="PUT">PUT</option>
+              <option value="PATCH">PATCH</option>
+            </select>
+          </label>
+          <label className="flex flex-col gap-1 text-sm">
+            <span className="text-xs font-semibold uppercase tracking-wide text-gray-500">Headers (JSON)</span>
+            <textarea
+              value={JSON.stringify(config.headers ?? {}, null, 2)}
+              onChange={(event) => {
+                try {
+                  const parsed = event.target.value.trim() ? JSON.parse(event.target.value) : {};
+                  onConfigChange("headers", parsed);
+                } catch (error) {
+                  window.alert("Headers must be valid JSON");
+                }
+              }}
+              rows={4}
+              className="rounded-lg border border-gray-300 px-3 py-2 font-mono text-xs"
+            />
+          </label>
+          <label className="flex flex-col gap-1 text-sm">
+            <span className="text-xs font-semibold uppercase tracking-wide text-gray-500">Body (JSON)</span>
+            <textarea
+              value={JSON.stringify(config.body ?? {}, null, 2)}
+              onChange={(event) => {
+                try {
+                  const parsed = event.target.value.trim() ? JSON.parse(event.target.value) : {};
+                  onConfigChange("body", parsed);
+                } catch (error) {
+                  window.alert("Body must be valid JSON");
+                }
+              }}
+              rows={6}
+              className="rounded-lg border border-gray-300 px-3 py-2 font-mono text-xs"
+            />
+          </label>
+        </div>
+      );
+    case "email":
+      return (
+        <div className="mt-4 space-y-3">
+          <label className="flex flex-col gap-1 text-sm">
+            <span className="text-xs font-semibold uppercase tracking-wide text-gray-500">To</span>
+            <input
+              value={config.to ?? ""}
+              onChange={(event) => onConfigChange("to", event.target.value)}
+              className="rounded-lg border border-gray-300 px-3 py-2"
+            />
+          </label>
+          <label className="flex flex-col gap-1 text-sm">
+            <span className="text-xs font-semibold uppercase tracking-wide text-gray-500">Subject</span>
+            <input
+              value={config.subject ?? ""}
+              onChange={(event) => onConfigChange("subject", event.target.value)}
+              className="rounded-lg border border-gray-300 px-3 py-2"
+            />
+          </label>
+          <label className="flex flex-col gap-1 text-sm">
+            <span className="text-xs font-semibold uppercase tracking-wide text-gray-500">Body</span>
+            <textarea
+              value={config.body ?? ""}
+              onChange={(event) => onConfigChange("body", event.target.value)}
+              rows={5}
+              className="rounded-lg border border-gray-300 px-3 py-2 text-sm"
+            />
+          </label>
+        </div>
+      );
+    case "slack":
+      return (
+        <div className="mt-4 space-y-3">
+          <label className="flex flex-col gap-1 text-sm">
+            <span className="text-xs font-semibold uppercase tracking-wide text-gray-500">Channel</span>
+            <input
+              value={config.channel ?? ""}
+              onChange={(event) => onConfigChange("channel", event.target.value)}
+              className="rounded-lg border border-gray-300 px-3 py-2"
+            />
+          </label>
+          <label className="flex flex-col gap-1 text-sm">
+            <span className="text-xs font-semibold uppercase tracking-wide text-gray-500">Message</span>
+            <textarea
+              value={config.message ?? ""}
+              onChange={(event) => onConfigChange("message", event.target.value)}
+              rows={4}
+              className="rounded-lg border border-gray-300 px-3 py-2 text-sm"
+            />
+          </label>
+        </div>
+      );
+    case "delay":
+      return (
+        <div className="mt-4">
+          <label className="flex flex-col gap-1 text-sm">
+            <span className="text-xs font-semibold uppercase tracking-wide text-gray-500">Delay (ms)</span>
+            <input
+              type="number"
+              min={0}
+              value={config.duration ?? 1000}
+              onChange={(event) => onConfigChange("duration", Number(event.target.value) || 0)}
+              className="rounded-lg border border-gray-300 px-3 py-2"
+            />
+          </label>
+        </div>
+      );
+    case "loop":
+      return (
+        <div className="mt-4 space-y-3">
+          <label className="flex flex-col gap-1 text-sm">
+            <span className="text-xs font-semibold uppercase tracking-wide text-gray-500">Variable name</span>
+            <input
+              value={config.variable ?? "item"}
+              onChange={(event) => onConfigChange("variable", event.target.value)}
+              className="rounded-lg border border-gray-300 px-3 py-2"
+            />
+          </label>
+          <label className="flex flex-col gap-1 text-sm">
+            <span className="text-xs font-semibold uppercase tracking-wide text-gray-500">Items (JSON)</span>
+            <textarea
+              value={JSON.stringify(config.items ?? [], null, 2)}
+              onChange={(event) => {
+                try {
+                  const parsed = event.target.value.trim() ? JSON.parse(event.target.value) : [];
+                  onConfigChange("items", parsed);
+                } catch (error) {
+                  window.alert("Items must be valid JSON");
+                }
+              }}
+              rows={4}
+              className="rounded-lg border border-gray-300 px-3 py-2 font-mono text-xs"
+            />
+          </label>
+        </div>
+      );
+    case "transform":
+      return (
+        <div className="mt-4">
+          <label className="flex flex-col gap-1 text-sm">
+            <span className="text-xs font-semibold uppercase tracking-wide text-gray-500">Mapping (JSON)</span>
+            <textarea
+              value={JSON.stringify(config.mapping ?? {}, null, 2)}
+              onChange={(event) => {
+                try {
+                  const parsed = event.target.value.trim() ? JSON.parse(event.target.value) : {};
+                  onConfigChange("mapping", parsed);
+                } catch (error) {
+                  window.alert("Mapping must be valid JSON");
+                }
+              }}
+              rows={6}
+              className="rounded-lg border border-gray-300 px-3 py-2 font-mono text-xs"
+            />
+          </label>
+        </div>
+      );
+    default:
+      return (
+        <div className="mt-4">
+          <label className="flex flex-col gap-1 text-sm">
+            <span className="text-xs font-semibold uppercase tracking-wide text-gray-500">Config (JSON)</span>
+            <textarea
+              defaultValue={JSON.stringify(config ?? {}, null, 2)}
+              onBlur={(event) => onConfigJsonChange(event.target.value)}
+              rows={8}
+              className="rounded-lg border border-gray-300 px-3 py-2 font-mono text-xs"
+            />
+          </label>
+        </div>
+      );
+  }
+}
+
+function EdgeInspector({
+  edge,
+  onUpdate,
+  onDelete,
+}: {
+  edge: WorkflowEdge;
+  onUpdate: (updater: (data: { condition?: string }) => { condition?: string }) => void;
+  onDelete: () => void;
+}) {
+  const data = edge.data ?? {};
+  return (
+    <div className="flex h-full flex-col">
+      <div>
+        <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">Edge condition</p>
+        <p className="mt-1 text-sm text-gray-600">
+          Optional expression to decide whether this path should run. Leave blank to always follow this edge.
+        </p>
+        <label className="mt-4 flex flex-col gap-1 text-sm">
+          <span className="text-xs font-semibold uppercase tracking-wide text-gray-500">Condition</span>
+          <input
+            value={data.condition ?? ""}
+            onChange={(event) => onUpdate(() => ({ condition: event.target.value }))}
+            placeholder="{{context.status}} == 'needs_followup'"
+            className="rounded-lg border border-gray-300 px-3 py-2"
+          />
+        </label>
+      </div>
+      <div className="mt-auto flex items-center justify-between border-t border-gray-200 pt-4">
+        <button
+          type="button"
+          onClick={onDelete}
+          className="rounded-full border border-red-400 px-3 py-1 text-xs font-semibold text-red-600 hover:bg-red-100"
+        >
+          Delete connection
+        </button>
+      </div>
+    </div>
+  );
+}
+
