@@ -337,17 +337,44 @@ export default function WorkflowBuilderPage() {
     }
   }, [workflowId]);
 
+  const fetchPresence = useCallback(async () => {
+    if (!workflowId) return;
+    try {
+      const response = await fetch(`/api/workflows/${workflowId}/presence`);
+      const body = await response.json().catch(() => null);
+
+      if (!response.ok) {
+        throw new Error(body?.error ?? "Failed to load presence");
+      }
+
+      if (Array.isArray(body)) {
+        setPresence(body as PresenceParticipant[]);
+      }
+    } catch (error) {
+      console.error(error);
+    }
+  }, [workflowId]);
+
+  const sendHeartbeat = useCallback(async () => {
+    if (!workflowId || !sessionId) return;
+    try {
+      await fetch(`/api/workflows/${workflowId}/presence`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          sessionId,
+          displayName: presenceName,
+          color: presenceColor,
+        }),
+      });
+    } catch (error) {
+      console.error(error);
+    }
+  }, [presenceColor, presenceName, sessionId, workflowId]);
+
   useEffect(() => {
     void fetchWorkflow();
   }, [fetchWorkflow]);
-
-  useEffect(() => {
-    void loadHistory({ selectLatest: true });
-  }, [loadHistory]);
-
-  useEffect(() => {
-    void loadVersions();
-  }, [loadVersions]);
 
 useEffect(() => {
   if (typeof window === "undefined" || !workflowId) return;
@@ -559,6 +586,14 @@ useEffect(() => {
     }
   }, [selectedVersionId, workflowId]);
 
+  useEffect(() => {
+    void loadHistory({ selectLatest: true });
+  }, [loadHistory]);
+
+  useEffect(() => {
+    void loadVersions();
+  }, [loadVersions]);
+
   const fetchVersionDetail = useCallback(
     async (versionId: string) => {
       if (!workflowId) return;
@@ -681,41 +716,6 @@ useEffect(() => {
     },
     [fetchVersionDetail, fetchWorkflow, loadHistory, loadVersions, workflowId]
   );
-
-  const fetchPresence = useCallback(async () => {
-    if (!workflowId) return;
-    try {
-      const response = await fetch(`/api/workflows/${workflowId}/presence`);
-      const body = await response.json().catch(() => null);
-
-      if (!response.ok) {
-        throw new Error(body?.error ?? "Failed to load presence");
-      }
-
-      if (Array.isArray(body)) {
-        setPresence(body as PresenceParticipant[]);
-      }
-    } catch (error) {
-      console.error(error);
-    }
-  }, [workflowId]);
-
-  const sendHeartbeat = useCallback(async () => {
-    if (!workflowId || !sessionId) return;
-    try {
-      await fetch(`/api/workflows/${workflowId}/presence`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          sessionId,
-          displayName: presenceName,
-          color: presenceColor,
-        }),
-      });
-    } catch (error) {
-      console.error(error);
-    }
-  }, [presenceColor, presenceName, sessionId, workflowId]);
 
   const openPresenceEditor = useCallback(() => {
     setIsEditingPresence(true);
@@ -1115,7 +1115,7 @@ useEffect(() => {
             nodeTypes={nodeTypes}
             fitView
           >
-            <Background variant="dots" gap={16} size={1} />
+            <Background gap={16} />
             <MiniMap pannable zoomable />
             <Controls />
           </ReactFlow>
@@ -1463,7 +1463,7 @@ useEffect(() => {
                                     Node: {log.nodeId}
                                   </p>
                                 )}
-                                {log.data && (
+                                {log.data !== null && log.data !== undefined && (
                                   <pre className="mt-2 max-h-32 overflow-y-auto rounded-lg border border-gray-100 bg-gray-50 p-2 text-[11px] text-gray-700">
                                     {formatJson(log.data)}
                                   </pre>
