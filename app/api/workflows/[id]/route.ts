@@ -1,5 +1,7 @@
 import { NextResponse } from "next/server";
+import { getServerSession } from "next-auth";
 
+import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 
 function safeParse<T>(value: string | null | undefined, fallback: T): T {
@@ -14,7 +16,12 @@ function safeParse<T>(value: string | null | undefined, fallback: T): T {
 export async function GET(_request: Request, context: { params: { id: string } }) {
   const { id } = context.params;
 
-  const workflow = await prisma.workflow.findUnique({ where: { id } });
+  const session = await getServerSession(authOptions);
+  if (!session?.user?.id) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
+  const workflow = await prisma.workflow.findFirst({ where: { id, ownerId: session.user.id } });
 
   if (!workflow) {
     return NextResponse.json({ error: "Workflow not found" }, { status: 404 });
@@ -33,9 +40,20 @@ export async function PUT(request: Request, context: { params: { id: string } })
   const { id } = context.params;
 
   try {
+    const session = await getServerSession(authOptions);
+    if (!session?.user?.id) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
+    const existing = await prisma.workflow.findFirst({ where: { id, ownerId: session.user.id } });
+
+    if (!existing) {
+      return NextResponse.json({ error: "Workflow not found" }, { status: 404 });
+    }
+
     const data = await request.json();
     const workflow = await prisma.workflow.update({
-      where: { id },
+      where: { id: existing.id },
       data: {
         ...(data.name && { name: data.name }),
         ...(data.description !== undefined && { description: data.description }),
@@ -64,7 +82,18 @@ export async function PUT(request: Request, context: { params: { id: string } })
 export async function DELETE(_request: Request, context: { params: { id: string } }) {
   const { id } = context.params;
 
-  await prisma.workflow.delete({ where: { id } }).catch((error) => {
+  const session = await getServerSession(authOptions);
+  if (!session?.user?.id) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
+  const existing = await prisma.workflow.findFirst({ where: { id, ownerId: session.user.id } });
+
+  if (!existing) {
+    return NextResponse.json({ error: "Workflow not found" }, { status: 404 });
+  }
+
+  await prisma.workflow.delete({ where: { id: existing.id } }).catch((error) => {
     console.error("Failed to delete workflow", error);
   });
 

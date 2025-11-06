@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server";
+import { getServerSession } from "next-auth";
 import { z } from "zod";
 
+import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { generateAgentReply, hydrateAgentRecord, type ChatMessage } from "@/lib/runtime";
 
@@ -17,7 +19,12 @@ export async function POST(request: Request, context: { params: { id: string } }
   const { id } = context.params;
 
   try {
-    const agentRecord = await prisma.agent.findUnique({ where: { id } });
+    const session = await getServerSession(authOptions);
+    if (!session?.user?.id) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
+    const agentRecord = await prisma.agent.findFirst({ where: { id, ownerId: session.user.id } });
 
     if (!agentRecord) {
       return NextResponse.json({ error: "Agent not found" }, { status: 404 });

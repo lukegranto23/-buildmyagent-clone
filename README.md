@@ -51,6 +51,8 @@ cp .env.example .env
 Edit `.env` and add your API keys:
 - `NEXTAUTH_SECRET`: Random secret for NextAuth
 - `NEXTAUTH_URL`: Your app URL (e.g., http://localhost:3000)
+- `EMAIL_FROM`: Address shown on magic link emails (e.g., login@mainstreet.dev)
+- `EMAIL_SERVER`: (Optional) SMTP connection string for sending magic links (omit to log links to the console in development)
 - `DATABASE_URL`: Your database connection string
 - `OPENAI_API_KEY`: Your OpenAI API key
 - `OPENAI_MODEL`: (Optional) Defaults to `gpt-4o-mini`

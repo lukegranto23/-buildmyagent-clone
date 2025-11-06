@@ -2,6 +2,8 @@
 
 import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
+import { useSession } from "next-auth/react";
 
 import { Button } from "@/components/ui/button";
 
@@ -36,6 +38,8 @@ type Stats = {
 };
 
 export default function DashboardPage() {
+  const { status } = useSession();
+  const router = useRouter();
   const [sessions, setSessions] = useState<Session[]>([]);
   const [appointments, setAppointments] = useState<Appointment[]>([]);
   const [stats, setStats] = useState<Stats>({
@@ -82,8 +86,33 @@ export default function DashboardPage() {
   }, []);
 
   useEffect(() => {
-    void fetchData();
-  }, [fetchData]);
+    if (status === "authenticated") {
+      void fetchData();
+    }
+  }, [fetchData, status]);
+
+  useEffect(() => {
+    if (status === "unauthenticated") {
+      const redirect = encodeURIComponent("/dashboard");
+      router.replace(`/auth/signin?callbackUrl=${redirect}`);
+    }
+  }, [status, router]);
+
+  if (status === "loading") {
+    return (
+      <div className="min-h-screen bg-gray-100">
+        <header className="border-b bg-white">
+          <div className="container mx-auto px-4 py-4">
+            <h1 className="text-xl font-semibold text-gray-900">Loading dashboard…</h1>
+          </div>
+        </header>
+      </div>
+    );
+  }
+
+  if (status === "unauthenticated") {
+    return null;
+  }
 
   const formatDate = (dateString: string) => {
     return new Date(dateString).toLocaleString("en-US", {

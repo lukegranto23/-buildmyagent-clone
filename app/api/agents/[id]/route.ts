@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server";
+import { getServerSession } from "next-auth";
 import { z } from "zod";
 
+import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { hydrateAgentRecord } from "@/lib/runtime";
 
@@ -50,7 +52,13 @@ const agentUpdateSchema = z
 export async function GET(_request: Request, context: { params: { id: string } }) {
   const { id } = context.params;
 
-  const agentRecord = await prisma.agent.findUnique({ where: { id } });
+  const session = await getServerSession(authOptions);
+
+  if (!session?.user?.id) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
+  const agentRecord = await prisma.agent.findFirst({ where: { id, ownerId: session.user.id } });
 
   if (!agentRecord) {
     return NextResponse.json({ error: "Agent not found" }, { status: 404 });
@@ -62,8 +70,14 @@ export async function GET(_request: Request, context: { params: { id: string } }
 export async function PATCH(request: Request, context: { params: { id: string } }) {
   const { id } = context.params;
 
+  const session = await getServerSession(authOptions);
+
+  if (!session?.user?.id) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
   try {
-    const existing = await prisma.agent.findUnique({ where: { id } });
+    const existing = await prisma.agent.findFirst({ where: { id, ownerId: session.user.id } });
 
     if (!existing) {
       return NextResponse.json({ error: "Agent not found" }, { status: 404 });
@@ -115,9 +129,23 @@ export async function PATCH(request: Request, context: { params: { id: string } 
 export async function DELETE(_request: Request, context: { params: { id: string } }) {
   const { id } = context.params;
 
-  await prisma.agent.delete({ where: { id } }).catch((error) => {
-    console.error("Failed to delete agent", error);
-  });
+  const session = await getServerSession(authOptions);
+
+  if (!session?.user?.id) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
+  const existing = await prisma.agent.findFirst({ where: { id, ownerId: session.user.id } });
+
+  if (!existing) {
+    return NextResponse.json({ error: "Agent not found" }, { status: 404 });
+  }
+
+  await prisma.agent
+    .delete({ where: { id: existing.id } })
+    .catch((error) => {
+      console.error("Failed to delete agent", error);
+    });
 
   return NextResponse.json({ ok: true });
 }

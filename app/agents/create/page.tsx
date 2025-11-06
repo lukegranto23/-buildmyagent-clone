@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useEffect, useMemo, useState } from "react";
+import { useSession } from "next-auth/react";
 import { Button } from "@/components/ui/button";
 import {
   agentRoles,
@@ -51,6 +52,7 @@ function formatNumberInput(value: number) {
 function CreateAgentPageContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
+  const { status } = useSession();
   const templateId = searchParams.get("template");
   const descriptionFromHero = searchParams.get("description");
 
@@ -94,6 +96,14 @@ function CreateAgentPageContent() {
       setOfferName(buildDefaultOfferName(industryId, roleId));
     }
   }, [industryId, roleId, offerNameTouched]);
+
+  useEffect(() => {
+    if (status === "unauthenticated") {
+      const params = templateId ? `?template=${templateId}` : "";
+      const redirect = encodeURIComponent(`/agents/create${params}`);
+      void router.replace(`/auth/signin?callbackUrl=${redirect}`);
+    }
+  }, [status, router, templateId]);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -274,6 +284,11 @@ function CreateAgentPageContent() {
   };
 
   const handleSave = async () => {
+    if (status !== "authenticated") {
+      window.alert("Sign in to save agents.");
+      return;
+    }
+
     setIsSaving(true);
     try {
       const response = await fetch("/api/agents", {
@@ -329,26 +344,38 @@ function CreateAgentPageContent() {
     }
   };
 
+  if (status === "loading") {
     return (
-      <div className="min-h-screen bg-gray-100">
-        <header className="border-b bg-white">
-          <div className="container mx-auto flex items-center justify-between px-4 py-4">
-            <Link href="/" className="text-xl font-bold">
-              Main Street Agent Lab
+      <div className="flex min-h-screen items-center justify-center bg-gray-100">
+        <p className="text-sm text-gray-600">Preparing the agent builder…</p>
+      </div>
+    );
+  }
+
+  if (status === "unauthenticated") {
+    return null;
+  }
+
+  return (
+    <div className="min-h-screen bg-gray-100">
+      <header className="border-b bg-white">
+        <div className="container mx-auto flex items-center justify-between px-4 py-4">
+          <Link href="/" className="text-xl font-bold">
+            Main Street Agent Lab
+          </Link>
+          <div className="flex items-center gap-3">
+            <Link href="/">
+              <Button variant="ghost">Back to Builder</Button>
             </Link>
-            <div className="flex items-center gap-3">
-              <Link href="/">
-                <Button variant="ghost">Back to Builder</Button>
-              </Link>
-              <Link href="/workflows">
-                <Button variant="ghost">Workflows</Button>
-              </Link>
-              <Link href="/agents">
-                <Button variant="outline">My Agents</Button>
-              </Link>
-            </div>
+            <Link href="/workflows">
+              <Button variant="ghost">Workflows</Button>
+            </Link>
+            <Link href="/agents">
+              <Button variant="outline">My Agents</Button>
+            </Link>
           </div>
-        </header>
+        </div>
+      </header>
 
       <main className="container mx-auto px-4 py-8">
         <div className="mb-8 max-w-4xl">

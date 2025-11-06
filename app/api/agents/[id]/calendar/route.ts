@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server";
+import { getServerSession } from "next-auth";
 import { z } from "zod";
 
+import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { getCalendarConfig } from "@/lib/scheduling";
 
@@ -25,7 +27,12 @@ const calendarPayloadSchema = z.object({
 export async function GET(_request: Request, context: { params: { id: string } }) {
   const { id } = context.params;
 
-  const agent = await prisma.agent.findUnique({ where: { id } });
+  const session = await getServerSession(authOptions);
+  if (!session?.user?.id) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
+  const agent = await prisma.agent.findFirst({ where: { id, ownerId: session.user.id } });
 
   if (!agent) {
     return NextResponse.json({ error: "Agent not found" }, { status: 404 });
@@ -40,7 +47,12 @@ export async function POST(request: Request, context: { params: { id: string } }
   const { id } = context.params;
 
   try {
-    const agent = await prisma.agent.findUnique({ where: { id } });
+    const session = await getServerSession(authOptions);
+    if (!session?.user?.id) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
+    const agent = await prisma.agent.findFirst({ where: { id, ownerId: session.user.id } });
 
     if (!agent) {
       return NextResponse.json({ error: "Agent not found" }, { status: 404 });

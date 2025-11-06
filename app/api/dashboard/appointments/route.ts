@@ -1,8 +1,15 @@
 import { NextResponse } from "next/server";
+import { getServerSession } from "next-auth";
 
+import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 
 export async function GET(request: Request) {
+  const session = await getServerSession(authOptions);
+  if (!session?.user?.id) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
   const url = new URL(request.url);
   const limit = Number(url.searchParams.get("limit") ?? "20");
   const agentId = url.searchParams.get("agentId") ?? undefined;
@@ -14,6 +21,7 @@ export async function GET(request: Request) {
 
   const appointments = await prisma.appointment.findMany({
     where: {
+      agent: { ownerId: session.user.id },
       ...(agentId && { agentId }),
       ...(status && { status }),
       ...(after ? { start: { gte: new Date(after) } } : !showPast ? { start: { gte: now } } : {}),

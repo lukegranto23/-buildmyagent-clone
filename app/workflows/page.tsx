@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
+import { useSession } from "next-auth/react";
 
 import { Button } from "@/components/ui/button";
 import {
@@ -67,11 +68,35 @@ function formatDate(value: string) {
 
 export default function WorkflowsPage() {
   const router = useRouter();
+  const { status } = useSession();
   const [savedWorkflows, setSavedWorkflows] = useState<SavedWorkflow[]>([]);
 
   useEffect(() => {
     setSavedWorkflows(loadSavedWorkflows());
   }, []);
+
+  useEffect(() => {
+    if (status === "unauthenticated") {
+      const redirect = encodeURIComponent("/workflows");
+      void router.replace(`/auth/signin?callbackUrl=${redirect}`);
+    }
+  }, [status, router]);
+
+  if (status === "loading") {
+    return (
+      <div className="min-h-screen bg-gray-100">
+        <header className="border-b bg-white">
+          <div className="container mx-auto px-4 py-4">
+            <h1 className="text-xl font-semibold text-gray-900">Loading your workflows…</h1>
+          </div>
+        </header>
+      </div>
+    );
+  }
+
+  if (status === "unauthenticated") {
+    return null;
+  }
 
   const handleLaunchTemplate = (templateId: string) => {
     if (typeof window !== "undefined") {

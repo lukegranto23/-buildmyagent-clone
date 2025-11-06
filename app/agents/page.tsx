@@ -2,6 +2,8 @@
 
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { useSession } from "next-auth/react";
+import { useRouter } from "next/navigation";
 
 import { Button } from "@/components/ui/button";
 import { generatePriceCopy, type BlueprintOutput, type SupportPackage } from "@/lib/boomerBlueprints";
@@ -86,6 +88,8 @@ function mapToUiAgent(agent: ApiAgent): UiAgent {
 }
 
 export default function AgentsPage() {
+  const router = useRouter();
+  const { status } = useSession();
   const [agents, setAgents] = useState<UiAgent[]>([]);
   const [industryFilter, setIndustryFilter] = useState("all");
   const [isLoading, setIsLoading] = useState(true);
@@ -110,8 +114,33 @@ export default function AgentsPage() {
   }, []);
 
   useEffect(() => {
-    void fetchAgents();
-  }, [fetchAgents]);
+    if (status === "unauthenticated") {
+      const redirect = encodeURIComponent("/agents");
+      void router.replace(`/auth/signin?callbackUrl=${redirect}`);
+    }
+  }, [status, router]);
+
+  useEffect(() => {
+    if (status === "authenticated") {
+      void fetchAgents();
+    }
+  }, [fetchAgents, status]);
+
+  if (status === "loading") {
+    return (
+      <div className="min-h-screen bg-gray-100">
+        <header className="border-b bg-white">
+          <div className="container mx-auto px-4 py-4">
+            <h1 className="text-xl font-semibold text-gray-900">Loading your agents…</h1>
+          </div>
+        </header>
+      </div>
+    );
+  }
+
+  if (status === "unauthenticated") {
+    return null;
+  }
 
   const uniqueIndustries = useMemo(() => {
     const industries = agents.map((agent) => agent.industryLabel);
