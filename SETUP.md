@@ -15,14 +15,15 @@
    Edit `.env` and add your configuration:
    - Generate `NEXTAUTH_SECRET`: Run `openssl rand -base64 32` or use any random string
    - Set `NEXTAUTH_URL` to `http://localhost:3000` for development
+   - Configure email magic links: `EMAIL_FROM`, `EMAIL_SERVER_HOST`, `EMAIL_SERVER_PORT`, `EMAIL_SERVER_USER`, `EMAIL_SERVER_PASSWORD`
+   - (Optional) Enable Google sign-in with `GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET`
    - Add your database URL (PostgreSQL recommended)
    - Add your OpenAI API key
    - Add your Stripe keys (optional for now)
 
 3. **Set up database (optional - for full functionality):**
    ```bash
-   npx prisma generate
-   npx prisma db push
+   npx prisma migrate dev
    ```
 
 4. **Run the development server:**
@@ -42,7 +43,7 @@
 ✅ **Integrations Showcase** - Display available integrations
 ✅ **FAQ Section** - Expandable FAQ items
 ✅ **Testimonials** - User testimonials display
-✅ **Sign In Page** - UI ready (needs auth implementation)
+✅ **Sign In Page** - Email magic link + optional Google sign-in powered by NextAuth
 ✅ **Agent Creation Page** - UI ready (needs database integration)
 ✅ **Agent List Page** - UI ready (needs database integration)
 
@@ -50,27 +51,22 @@
 
 ### For Full Functionality:
 
-1. **Authentication** (NextAuth.js)
-   - Set up providers (Email, Google OAuth)
-   - Configure session management
-   - Protect agent routes
-
-2. **Database Integration** (Prisma)
+1. **Database Integration** (Prisma)
    - Set up PostgreSQL database
    - Run migrations
    - Implement CRUD operations for agents
 
-3. **OpenAI Integration**
+2. **OpenAI Integration**
    - Implement agent execution
    - Add streaming responses
    - Handle agent conversations
 
-4. **Stripe Integration**
+3. **Stripe Integration**
    - Set up webhooks
    - Implement subscription management
    - Credit system and billing
 
-5. **Integration Connections**
+4. **Integration Connections**
    - OAuth flows for integrations
    - API connections
    - Webhook handlers
@@ -88,11 +84,10 @@ The app will show alerts/console logs where functionality needs to be implemente
 
 ## Next Steps
 
-1. Start with authentication - get users logged in
-2. Add database - save and retrieve agents
-3. Integrate OpenAI - make agents actually work
-4. Add Stripe - enable payments
-5. Build integrations - connect to external services
+1. Add database CRUD - save and retrieve agents per user
+2. Integrate OpenAI - make agents actually work
+3. Add Stripe - enable payments
+4. Build integrations - connect to external services
 
 Enjoy building! 🚀
 

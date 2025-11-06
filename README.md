@@ -19,7 +19,7 @@ A fully functional clone of buildmyagent.io - an AI agent builder platform for c
 - **Framework**: Next.js 14 (App Router)
 - **Language**: TypeScript
 - **Styling**: Tailwind CSS
-- **Authentication**: NextAuth.js (to be configured)
+- **Authentication**: NextAuth.js (email magic links + optional Google OAuth)
 - **Database**: Prisma + SQLite (local development)
 - **Payments**: Stripe (to be configured)
 - **AI**: OpenAI API (to be configured)
@@ -51,20 +51,23 @@ cp .env.example .env
 Edit `.env` and add your API keys:
 - `NEXTAUTH_SECRET`: Random secret for NextAuth
 - `NEXTAUTH_URL`: Your app URL (e.g., http://localhost:3000)
+- `EMAIL_FROM`: Friendly from address for magic link emails
+- `EMAIL_SERVER_HOST`, `EMAIL_SERVER_PORT`, `EMAIL_SERVER_USER`, `EMAIL_SERVER_PASSWORD`: SMTP credentials for magic links
+- `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`: Optional Google OAuth credentials
 - `DATABASE_URL`: Your database connection string
 - `OPENAI_API_KEY`: Your OpenAI API key
 - `OPENAI_MODEL`: (Optional) Defaults to `gpt-4o-mini`
 - `TWILIO_ACCOUNT_SID`: Twilio project SID
 - `TWILIO_AUTH_TOKEN`: Twilio auth token
 - `TWILIO_DEFAULT_CALLER_ID`: (Optional) Number to use for outbound tests
-
-If you skip the OpenAI keys the sandbox will still respond using a built-in fallback copy engine.
 - `STRIPE_SECRET_KEY`: Your Stripe secret key
 - `STRIPE_PUBLISHABLE_KEY`: Your Stripe publishable key
 
+If you skip the OpenAI keys the sandbox will still respond using a built-in fallback copy engine.
+
 4. Set up the database (creates a local `dev.db` SQLite file):
 ```bash
-npx prisma migrate dev --name init
+npx prisma migrate dev
 ```
 
 5. Run the development server:
@@ -149,7 +152,7 @@ buildmyagent-clone/
 
 ## Features to Implement
 
-- [ ] Complete authentication flow (NextAuth)
+- [x] Complete authentication flow (NextAuth)
 - [ ] Database integration (Prisma)
 - [ ] OpenAI agent execution
 - [ ] Stripe payment integration
