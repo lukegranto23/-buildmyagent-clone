@@ -38,6 +38,8 @@ type WorkflowRecord = {
   description?: string | null;
   status: string;
   agentId?: string | null;
+  metadata?: unknown;
+  activeVersionId?: string | null;
   nodes: Array<{
     id: string;
     type: string;
@@ -84,6 +86,35 @@ type ExecutionSummary = {
 
 type ExecutionDetail = ExecutionSummary & {
   logs: ExecutionLogEntry[];
+};
+
+type WorkflowVersionSummary = {
+  id: string;
+  versionNumber: number;
+  name: string | null;
+  description: string | null;
+  notes: string | null;
+  createdAt: string;
+  isActive: boolean;
+};
+
+type WorkflowVersionDetail = {
+  id: string;
+  versionNumber: number;
+  name: string | null;
+  description: string | null;
+  notes: string | null;
+  createdAt: string;
+  isActive: boolean;
+  nodes: unknown[];
+  edges: unknown[];
+  metadata: unknown;
+  current?: {
+    nodes: unknown[];
+    edges: unknown[];
+    metadata: unknown;
+    updatedAt: string;
+  };
 };
 
 const NODE_LIBRARY: NodeLibraryItem[] = [
@@ -248,6 +279,14 @@ export default function WorkflowBuilderPage() {
   const [selectedExecution, setSelectedExecution] = useState<ExecutionDetail | null>(null);
   const [isHistoryLoading, setIsHistoryLoading] = useState(false);
   const [historyError, setHistoryError] = useState<string | null>(null);
+  const [versions, setVersions] = useState<WorkflowVersionSummary[]>([]);
+  const [selectedVersionId, setSelectedVersionId] = useState<string | null>(null);
+  const [versionDetail, setVersionDetail] = useState<WorkflowVersionDetail | null>(null);
+  const [isVersionsLoading, setIsVersionsLoading] = useState(false);
+  const [versionsError, setVersionsError] = useState<string | null>(null);
+  const [isVersionDetailLoading, setIsVersionDetailLoading] = useState(false);
+  const [isVersionSaving, setIsVersionSaving] = useState(false);
+  const [versionActionId, setVersionActionId] = useState<string | null>(null);
 
   const fetchWorkflow = useCallback(async () => {
     if (!workflowId) return;
@@ -278,6 +317,10 @@ export default function WorkflowBuilderPage() {
   useEffect(() => {
     void loadHistory({ selectLatest: true });
   }, [loadHistory]);
+
+  useEffect(() => {
+    void loadVersions();
+  }, [loadVersions]);
 
   const onNodesChange = useCallback(
     (changes: NodeChange[]) => setNodes((nds) => applyNodeChanges(changes, nds)),
@@ -371,6 +414,158 @@ export default function WorkflowBuilderPage() {
       }
     },
     [fetchExecutionDetail, selectedExecutionId, workflowId]
+  );
+
+  const loadVersions = useCallback(async () => {
+    if (!workflowId) return;
+
+    setIsVersionsLoading(true);
+    setVersionsError(null);
+
+    try {
+      const response = await fetch(`/api/workflows/${workflowId}/versions`);
+      const body = await response.json().catch(() => null);
+
+      if (!response.ok) {
+        throw new Error(body?.error ?? "Failed to load versions");
+      }
+
+      const list = Array.isArray(body) ? (body as WorkflowVersionSummary[]) : [];
+      setVersions(list);
+
+      if (selectedVersionId && !list.some((version) => version.id === selectedVersionId)) {
+        setSelectedVersionId(null);
+        setVersionDetail(null);
+      }
+    } catch (err) {
+      console.error(err);
+      setVersionsError(err instanceof Error ? err.message : "Unable to load versions");
+    } finally {
+      setIsVersionsLoading(false);
+    }
+  }, [selectedVersionId, workflowId]);
+
+  const fetchVersionDetail = useCallback(
+    async (versionId: string) => {
+      if (!workflowId) return;
+
+      setSelectedVersionId(versionId);
+      setVersionDetail(null);
+      setIsVersionDetailLoading(true);
+
+      try {
+        const response = await fetch(`/api/workflows/${workflowId}/versions/${versionId}?includeCurrent=true`);
+        const body = await response.json().catch(() => null);
+
+        if (!response.ok) {
+          throw new Error(body?.error ?? "Failed to load version detail");
+        }
+
+        const detail = body?.version as WorkflowVersionDetail | undefined;
+        if (!detail) {
+          throw new Error("Version detail missing");
+        }
+
+        setVersionDetail({
+          ...detail,
+          current: body?.current,
+        });
+      } catch (err) {
+        console.error(err);
+        window.alert(err instanceof Error ? err.message : "Unable to load version detail");
+      } finally {
+        setIsVersionDetailLoading(false);
+      }
+    },
+    [workflowId]
+  );
+
+  const handleCreateVersion = useCallback(async () => {
+    if (!workflowId) return;
+    setIsVersionSaving(true);
+    try {
+      const response = await fetch(`/api/workflows/${workflowId}/versions`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ activate: false }),
+      });
+
+      const body = await response.json().catch(() => null);
+      if (!response.ok) {
+        throw new Error(body?.error ?? "Failed to create version");
+      }
+
+      await loadVersions();
+      if (body?.id) {
+        await fetchVersionDetail(body.id as string);
+      }
+    } catch (err) {
+      console.error(err);
+      window.alert(err instanceof Error ? err.message : "Unable to create version snapshot");
+    } finally {
+      setIsVersionSaving(false);
+    }
+  }, [fetchVersionDetail, loadVersions, workflowId]);
+
+  const handleActivateVersion = useCallback(
+    async (versionId: string) => {
+      if (!workflowId) return;
+      setVersionActionId(versionId);
+      try {
+        const response = await fetch(`/api/workflows/${workflowId}/versions/${versionId}`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ action: "activate" }),
+        });
+
+        const body = await response.json().catch(() => null);
+        if (!response.ok) {
+          throw new Error(body?.error ?? "Failed to mark version active");
+        }
+
+        await loadVersions();
+        if (selectedVersionId === versionId) {
+          await fetchVersionDetail(versionId);
+        }
+        await fetchWorkflow();
+      } catch (err) {
+        console.error(err);
+        window.alert(err instanceof Error ? err.message : "Unable to mark version active");
+      } finally {
+        setVersionActionId(null);
+      }
+    },
+    [fetchVersionDetail, fetchWorkflow, loadVersions, selectedVersionId, workflowId]
+  );
+
+  const handleRestoreVersion = useCallback(
+    async (versionId: string) => {
+      if (!workflowId) return;
+      setVersionActionId(versionId);
+      try {
+        const response = await fetch(`/api/workflows/${workflowId}/versions/${versionId}`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ action: "restore" }),
+        });
+
+        const body = await response.json().catch(() => null);
+        if (!response.ok) {
+          throw new Error(body?.error ?? "Failed to restore version");
+        }
+
+        await fetchWorkflow();
+        await loadVersions();
+        await fetchVersionDetail(versionId);
+        await loadHistory();
+      } catch (err) {
+        console.error(err);
+        window.alert(err instanceof Error ? err.message : "Unable to restore version");
+      } finally {
+        setVersionActionId(null);
+      }
+    },
+    [fetchVersionDetail, fetchWorkflow, loadHistory, loadVersions, workflowId]
   );
 
   const handleAddNode = (item: NodeLibraryItem) => {
@@ -525,6 +720,9 @@ export default function WorkflowBuilderPage() {
     return "bg-gray-200 text-gray-700";
   };
 
+  const getVersionBadgeClass = (isActive: boolean) =>
+    isActive ? "bg-emerald-100 text-emerald-700" : "bg-gray-200 text-gray-700";
+
   const formatDateTime = (value?: string | null) => {
     if (!value) return "—";
     try {
@@ -621,20 +819,23 @@ export default function WorkflowBuilderPage() {
               rows={2}
             />
           </div>
-          <div className="flex flex-wrap items-center gap-3">
-            <Button variant="outline" onClick={() => void fetchWorkflow()}>
-              Reset
-            </Button>
+            <div className="flex flex-wrap items-center gap-3">
+              <Button variant="outline" onClick={() => void fetchWorkflow()}>
+                Reset
+              </Button>
+              <Button variant="outline" onClick={() => void handleCreateVersion()} disabled={isVersionSaving}>
+                {isVersionSaving ? "Saving snapshot..." : "Save snapshot"}
+              </Button>
               <Button variant="outline" onClick={() => void handleExport()}>
                 Export JSON
               </Button>
-            <Button variant="outline" onClick={handleSave} disabled={isSaving}>
-              {isSaving ? "Saving..." : "Save"}
-            </Button>
-            <Button onClick={handleRunTest} disabled={isRunning}>
-              {isRunning ? "Running..." : "Run test"}
-            </Button>
-          </div>
+              <Button variant="outline" onClick={handleSave} disabled={isSaving}>
+                {isSaving ? "Saving..." : "Save"}
+              </Button>
+              <Button onClick={handleRunTest} disabled={isRunning}>
+                {isRunning ? "Running..." : "Run test"}
+              </Button>
+            </div>
         </div>
       </header>
 
@@ -733,6 +934,64 @@ export default function WorkflowBuilderPage() {
 
                   <div>
                     <div className="flex items-center justify-between">
+                      <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">Snapshots</p>
+                      <Button variant="ghost" size="sm" onClick={() => void loadVersions()} disabled={isVersionsLoading}>
+                        {isVersionsLoading ? "Loading…" : "Refresh"}
+                      </Button>
+                    </div>
+                    {versionsError && (
+                      <div className="mt-2 rounded-xl border border-red-200 bg-red-50 p-3 text-xs text-red-700">
+                        {versionsError}
+                      </div>
+                    )}
+                    <div className="mt-3 space-y-2">
+                      {isVersionsLoading
+                        ? Array.from({ length: 2 }).map((_, index) => (
+                            <div key={index} className="h-12 animate-pulse rounded-2xl border border-gray-200 bg-gray-100" />
+                          ))
+                        : versions.map((version) => (
+                            <button
+                              key={version.id}
+                              onClick={() => void fetchVersionDetail(version.id)}
+                              className={`w-full rounded-2xl border p-3 text-left transition ${
+                                selectedVersionId === version.id
+                                  ? "border-purple-500 bg-purple-50 shadow-sm"
+                                  : "border-gray-200 hover:border-purple-300 hover:bg-purple-50"
+                              }`}
+                            >
+                              <div className="flex items-center justify-between">
+                                <div className="flex items-center gap-2 text-xs">
+                                  <span className="font-semibold text-gray-900">v{version.versionNumber}</span>
+                                  <span
+                                    className={`rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase ${getVersionBadgeClass(
+                                      version.isActive
+                                    )}`}
+                                  >
+                                    {version.isActive ? "Active" : "Snapshot"}
+                                  </span>
+                                </div>
+                                <span className="text-xs text-gray-500">{formatDateTime(version.createdAt)}</span>
+                              </div>
+                              {version.name && (
+                                <p className="mt-1 text-xs font-semibold text-gray-700">{version.name}</p>
+                              )}
+                              {version.notes ? (
+                                <p className="mt-1 text-xs text-gray-600">{version.notes}</p>
+                              ) : version.description ? (
+                                <p className="mt-1 text-xs text-gray-500">{version.description}</p>
+                              ) : null}
+                            </button>
+                          ))}
+                    </div>
+                    {!isVersionsLoading && versions.length === 0 && (
+                      <div className="mt-3 rounded-xl border border-dashed border-gray-200 bg-gray-50 p-4 text-xs text-gray-500">
+                        No snapshots yet. Capture a snapshot to freeze the current configuration.
+                      </div>
+                    )}
+                  </div>
+
+                  <div>
+                    <div className="flex items-center justify-between">
                       <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">Recent runs</p>
                       <Button variant="ghost" size="sm" onClick={() => void loadHistory()} disabled={isHistoryLoading}>
                         {isHistoryLoading ? "Loading…" : "Refresh"}
@@ -784,6 +1043,84 @@ export default function WorkflowBuilderPage() {
                       </div>
                     )}
                   </div>
+
+                  {isVersionDetailLoading ? (
+                    <div className="rounded-2xl border border-gray-200 bg-gray-50 p-4 text-xs text-gray-600">
+                      <div className="h-4 w-24 animate-pulse rounded bg-gray-200" />
+                      <div className="mt-3 h-32 animate-pulse rounded-lg border border-gray-200 bg-white" />
+                    </div>
+                  ) : selectedVersionId && versionDetail ? (
+                    <div className="rounded-2xl border border-gray-200 bg-gray-50 p-4 text-xs text-gray-600">
+                      <div className="flex items-start justify-between">
+                        <div>
+                          <p className="text-sm font-semibold text-gray-900">Version v{versionDetail.versionNumber}</p>
+                          <p className="text-xs text-gray-500">Captured {formatDateTime(versionDetail.createdAt)}</p>
+                          {versionDetail.notes ? (
+                            <p className="mt-1 text-xs text-gray-600">{versionDetail.notes}</p>
+                          ) : versionDetail.description ? (
+                            <p className="mt-1 text-xs text-gray-500">{versionDetail.description}</p>
+                          ) : null}
+                        </div>
+                        <span className={`rounded-full px-3 py-1 text-xs font-semibold uppercase ${getVersionBadgeClass(versionDetail.isActive)}`}>
+                          {versionDetail.isActive ? "Active" : "Snapshot"}
+                        </span>
+                      </div>
+
+                      <div className="mt-4 flex flex-wrap gap-2">
+                        {!versionDetail.isActive && (
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => void handleActivateVersion(versionDetail.id)}
+                            disabled={versionActionId === versionDetail.id}
+                          >
+                            {versionActionId === versionDetail.id ? "Updating..." : "Mark active"}
+                          </Button>
+                        )}
+                        <Button
+                          size="sm"
+                          onClick={() => void handleRestoreVersion(versionDetail.id)}
+                          disabled={versionActionId === versionDetail.id}
+                        >
+                          {versionActionId === versionDetail.id ? "Restoring..." : "Restore version"}
+                        </Button>
+                      </div>
+
+                      <div className="mt-4 grid gap-4 lg:grid-cols-2">
+                        <div>
+                          <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">Snapshot nodes</p>
+                          <pre className="mt-2 max-h-40 overflow-y-auto rounded-lg border border-gray-200 bg-white p-3 text-xs text-gray-700">
+                            {formatJson(versionDetail.nodes)}
+                          </pre>
+                        </div>
+                        {versionDetail.current && (
+                          <div>
+                            <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">Current nodes</p>
+                            <pre className="mt-2 max-h-40 overflow-y-auto rounded-lg border border-gray-200 bg-white p-3 text-xs text-gray-700">
+                              {formatJson(versionDetail.current.nodes)}
+                            </pre>
+                          </div>
+                        )}
+                      </div>
+
+                      <div className="mt-4 grid gap-4 lg:grid-cols-2">
+                        <div>
+                          <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">Snapshot edges</p>
+                          <pre className="mt-2 max-h-32 overflow-y-auto rounded-lg border border-gray-200 bg-white p-3 text-xs text-gray-700">
+                            {formatJson(versionDetail.edges)}
+                          </pre>
+                        </div>
+                        {versionDetail.current && (
+                          <div>
+                            <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">Current edges</p>
+                            <pre className="mt-2 max-h-32 overflow-y-auto rounded-lg border border-gray-200 bg-white p-3 text-xs text-gray-700">
+                              {formatJson(versionDetail.current.edges)}
+                            </pre>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  ) : null}
 
                   {selectedExecution && (
                     <div className="rounded-2xl border border-gray-200 bg-gray-50 p-4 text-xs text-gray-600">
