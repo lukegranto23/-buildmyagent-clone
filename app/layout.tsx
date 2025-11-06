@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import "./globals.css";
+import "reactflow/dist/style.css";
 
 export const metadata: Metadata = {
   title: "Main Street Agent Lab by BuildMyAgent",

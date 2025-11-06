@@ -6,6 +6,7 @@ import { Pricing } from "@/components/Pricing";
 import { Testimonials } from "@/components/Testimonials";
 import { FAQ } from "@/components/FAQ";
 import { Community } from "@/components/Community";
+import { WorkflowBuilder } from "@/components/workflows/WorkflowBuilder";
 
 export default function Home() {
   return (
@@ -17,43 +18,52 @@ export default function Home() {
               <span>Main Street Agent</span>
               <span className="text-gray-500">Lab</span>
             </Link>
-            <div className="hidden md:flex items-center gap-6">
-              <Link href="/dashboard" className="text-gray-600 hover:text-gray-900">
-                Dashboard
-              </Link>
-              <Link href="/agents" className="text-gray-600 hover:text-gray-900">
-                Agents
-              </Link>
-              <Link href="/workflows" className="text-gray-600 hover:text-gray-900">
-                Workflows
-              </Link>
-              <Link href="#method" className="text-gray-600 hover:text-gray-900">
-                Method
-              </Link>
-              <Link href="#integrations" className="text-gray-600 hover:text-gray-900">
-                Integrations
-              </Link>
-              <Link href="#pricing" className="text-gray-600 hover:text-gray-900">
-                Plans
-              </Link>
-              <Link href="#faq" className="text-gray-600 hover:text-gray-900">
-                FAQ
-              </Link>
-              <Link href="#community" className="text-gray-600 hover:text-gray-900">
-                Collective
-              </Link>
-            </div>
-            <Link href="/auth/signin">
-              <Button variant="outline">Sign in</Button>
+            <Link href="/agents" className="text-gray-600 hover:text-gray-900">
+              Agents
+            </Link>
+            <Link href="/workflows" className="text-gray-600 hover:text-gray-900">
+              Workflows
+            </Link>
+            <Link href="#method" className="text-gray-600 hover:text-gray-900">
+              Method
+            </Link>
+            <Link href="#integrations" className="text-gray-600 hover:text-gray-900">
+              Integrations
+            </Link>
+            <Link href="#pricing" className="text-gray-600 hover:text-gray-900">
+              Plans
+            </Link>
+            <Link href="#faq" className="text-gray-600 hover:text-gray-900">
+              FAQ
+            </Link>
+            <Link href="#community" className="text-gray-600 hover:text-gray-900">
+              Collective
             </Link>
           </nav>
         </header>
 
-      <main>
-        {/* Hero Section */}
-        <section className="container mx-auto px-4 py-20">
-          <AgentBuilder />
-        </section>
+        <main>
+          {/* Hero Section */}
+          <section className="container mx-auto px-4 py-20">
+            <AgentBuilder />
+          </section>
+
+          <section className="bg-gray-100 py-16">
+            <div className="container mx-auto px-4">
+              <div className="mb-8 max-w-3xl">
+                <span className="inline-flex items-center gap-2 rounded-full bg-emerald-500/15 px-3 py-1 text-xs font-semibold uppercase tracking-wide text-emerald-700">
+                  Orchestrate the experience
+                </span>
+                <h2 className="mt-4 text-3xl font-semibold text-gray-900 sm:text-4xl">
+                  Drag-and-drop the calls, texts, and analog follow-up your clients expect
+                </h2>
+                <p className="mt-3 text-base text-gray-600">
+                  Map the full customer journey just like n8n or buildmyagent.io—triggers on the left, AI brains in the middle, and integrations that make it real on day one. No API keys required yet.
+                </p>
+              </div>
+              <WorkflowBuilder />
+            </div>
+          </section>
 
         <section id="method" className="bg-slate-900 py-16">
           <div className="container mx-auto px-4">

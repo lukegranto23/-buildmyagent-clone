@@ -1,352 +1,284 @@
 "use client";
 
 import Link from "next/link";
-import { useRouter, useSearchParams } from "next/navigation";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import { useRouter } from "next/navigation";
 
 import { Button } from "@/components/ui/button";
+import {
+  workflowTemplates,
+  workflowModules,
+  WORKFLOW_LIBRARY_STORAGE_KEY,
+  WORKFLOW_TEMPLATE_SESSION_KEY,
+  type ConnectorState,
+} from "@/lib/workflowData";
 
-type WorkflowListItem = {
+type SavedWorkflow = {
   id: string;
   name: string;
-  status: string;
-  description?: string | null;
+  templateId?: string;
   createdAt: string;
-  updatedAt: string;
-  agentId?: string | null;
-  metadata?: Record<string, any> | null;
+  notes?: string;
+  connectors?: ConnectorState[];
 };
 
-const statusFilters = [
-  { value: "all", label: "All" },
-  { value: "draft", label: "Draft" },
-  { value: "active", label: "Active" },
-  { value: "paused", label: "Paused" },
-];
+function loadSavedWorkflows(): SavedWorkflow[] {
+  if (typeof window === "undefined") return [];
+  try {
+    const raw = window.localStorage.getItem(WORKFLOW_LIBRARY_STORAGE_KEY);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw) as SavedWorkflow[];
+    const integrations = workflowModules.filter((module) => module.category === "Integrations");
+    return Array.isArray(parsed)
+      ? parsed.map((workflow) =>
+          workflow.connectors
+            ? workflow
+            : {
+                ...workflow,
+                connectors: integrations.map((module) => ({
+                  id: module.id,
+                  label: module.title,
+                  enabled: true,
+                })),
+              }
+        )
+      : [];
+  } catch (error) {
+    console.warn("Failed to parse saved workflows", error);
+    return [];
+  }
+}
 
-const defaultTriggerNode = {
-  id: "trigger-1",
-  type: "trigger",
-  label: "Conversation started",
-  position: { x: 100, y: 100 },
-  data: {
-    description: "Begin when the agent receives an inbound call, SMS, or webhook.",
-  },
-  config: {
-    channel: "voice",
-  },
-};
+function persistWorkflows(workflows: SavedWorkflow[]) {
+  if (typeof window === "undefined") return;
+  window.localStorage.setItem(WORKFLOW_LIBRARY_STORAGE_KEY, JSON.stringify(workflows));
+}
+
+function formatDate(value: string) {
+  try {
+    return new Date(value).toLocaleString(undefined, {
+      dateStyle: "medium",
+      timeStyle: "short",
+    });
+  } catch {
+    return value;
+  }
+}
 
 export default function WorkflowsPage() {
   const router = useRouter();
-  const searchParams = useSearchParams();
-  const agentIdParam = searchParams.get("agentId");
-  const [statusFilter, setStatusFilter] = useState<string>(searchParams.get("status") ?? "all");
-
-  const [workflows, setWorkflows] = useState<WorkflowListItem[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const [isCreating, setIsCreating] = useState(false);
-  const [isImporting, setIsImporting] = useState(false);
-  const [cloningId, setCloningId] = useState<string | null>(null);
-  const fileInputRef = useRef<HTMLInputElement | null>(null);
-
-  const fetchWorkflows = useCallback(async () => {
-    setIsLoading(true);
-    setError(null);
-
-    try {
-      const params = new URLSearchParams();
-      if (agentIdParam) params.set("agentId", agentIdParam);
-      if (statusFilter !== "all") params.set("status", statusFilter);
-
-      const response = await fetch(`/api/workflows${params.toString() ? `?${params.toString()}` : ""}`);
-      if (!response.ok) {
-        throw new Error("Failed to load workflows");
-      }
-      const payload = (await response.json()) as any[];
-
-      setWorkflows(
-        payload.map((item) => ({
-          id: item.id,
-          name: item.name,
-          status: item.status,
-          description: item.description,
-          createdAt: item.createdAt,
-          updatedAt: item.updatedAt,
-          agentId: item.agentId,
-          metadata: item.metadata ?? null,
-        }))
-      );
-    } catch (err) {
-      console.error(err);
-      setError(err instanceof Error ? err.message : "Unable to load workflows");
-    } finally {
-      setIsLoading(false);
-    }
-  }, [agentIdParam, statusFilter]);
+  const [savedWorkflows, setSavedWorkflows] = useState<SavedWorkflow[]>([]);
 
   useEffect(() => {
-    void fetchWorkflows();
-  }, [fetchWorkflows]);
+    setSavedWorkflows(loadSavedWorkflows());
+  }, []);
 
-  const statusFilterLabel = useMemo(() => statusFilters.find((option) => option.value === statusFilter)?.label ?? "All", [statusFilter]);
+  const handleLaunchTemplate = (templateId: string) => {
+    if (typeof window !== "undefined") {
+      window.sessionStorage.setItem(WORKFLOW_TEMPLATE_SESSION_KEY, templateId);
+    }
+    router.push(`/workflows/create?template=${templateId}`);
+  };
 
-  const handleCreateWorkflow = async () => {
-    setIsCreating(true);
-    try {
-      const payload = {
-        agentId: agentIdParam,
-        name: agentIdParam ? "Agent runtime workflow" : "New workflow",
-        description: "Automate follow-up actions with drag-and-drop nodes.",
-        nodes: [defaultTriggerNode],
-        edges: [],
-        status: "draft",
-        metadata: {
-          createdFrom: "builder",
+  const handleSaveTemplate = (templateId: string, name: string) => {
+    const connectors: ConnectorState[] = workflowModules
+      .filter((module) => module.category === "Integrations")
+      .map((module) => ({ id: module.id, label: module.title, enabled: true }));
+    setSavedWorkflows((prev) => {
+      const next: SavedWorkflow[] = [
+        {
+          id: `${templateId}-${Date.now()}`,
+          name,
+          templateId,
+          createdAt: new Date().toISOString(),
+          connectors,
         },
-      };
-
-      const response = await fetch("/api/workflows", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
-      });
-
-      if (!response.ok) {
-        const errorBody = await response.json().catch(() => null);
-        throw new Error(errorBody?.error ?? "Failed to create workflow");
-      }
-
-      const workflow = (await response.json()) as { id: string };
-      router.push(`/workflows/${workflow.id}`);
-    } catch (err) {
-      console.error(err);
-      window.alert(err instanceof Error ? err.message : "Unable to create workflow");
-    } finally {
-      setIsCreating(false);
-    }
+        ...prev,
+      ];
+      persistWorkflows(next);
+      return next;
+    });
   };
 
-  const handleImportClick = () => {
-    fileInputRef.current?.click();
+  const handleDeleteSaved = (id: string) => {
+    setSavedWorkflows((prev) => {
+      const next = prev.filter((workflow) => workflow.id !== id);
+      persistWorkflows(next);
+      return next;
+    });
   };
 
-  const handleImportFileChange = async (event: React.ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0];
-    event.target.value = "";
-    if (!file) return;
-
-    setIsImporting(true);
-    try {
-      const text = await file.text();
-      const parsed = JSON.parse(text);
-
-      const payload = {
-        agentId: typeof parsed.agentId === "string" ? parsed.agentId : agentIdParam,
-        name: typeof parsed.name === "string" && parsed.name.trim().length > 0 ? parsed.name : `Imported Workflow ${new Date().toLocaleString()}`,
-        description: typeof parsed.description === "string" ? parsed.description : null,
-        nodes: Array.isArray(parsed.nodes) ? parsed.nodes : [],
-        edges: Array.isArray(parsed.edges) ? parsed.edges : [],
-        status: typeof parsed.status === "string" ? parsed.status : "draft",
-        schedule: typeof parsed.schedule === "string" ? parsed.schedule : null,
-        metadata: parsed.metadata && typeof parsed.metadata === "object" ? parsed.metadata : undefined,
-      };
-
-      const response = await fetch("/api/workflows", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
-      });
-
-      if (!response.ok) {
-        const body = await response.json().catch(() => null);
-        throw new Error(body?.error ?? "Failed to import workflow");
-      }
-
-      const created = await response.json();
-      await fetchWorkflows();
-      router.push(`/workflows/${created.id}`);
-    } catch (err) {
-      console.error(err);
-      window.alert(err instanceof Error ? err.message : "Unable to import workflow. Ensure the JSON matches the export format.");
-    } finally {
-      setIsImporting(false);
-    }
+  const handleUpdateNotes = (id: string, notes: string) => {
+    setSavedWorkflows((prev) => {
+      const next = prev.map((workflow) =>
+        workflow.id === id ? { ...workflow, notes } : workflow
+      );
+      persistWorkflows(next);
+      return next;
+    });
   };
 
-  const handleClone = async (workflowId: string) => {
-    setCloningId(workflowId);
-    try {
-      const response = await fetch(`/api/workflows/${workflowId}/clone`, {
-        method: "POST",
-      });
-
-      const body = await response.json().catch(() => null);
-
-      if (!response.ok) {
-        throw new Error(body?.error ?? "Failed to clone workflow");
-      }
-
-      await fetchWorkflows();
-      router.push(`/workflows/${body.id}`);
-    } catch (err) {
-      console.error(err);
-      window.alert(err instanceof Error ? err.message : "Unable to clone workflow");
-    } finally {
-      setCloningId(null);
-    }
-  };
+  const templatesByDifficulty = useMemo(() => {
+    return workflowTemplates.reduce<Record<string, typeof workflowTemplates>>((acc, template) => {
+      const key = template.difficulty;
+      if (!acc[key]) acc[key] = [];
+      acc[key].push(template);
+      return acc;
+    }, {});
+  }, []);
 
   return (
     <div className="min-h-screen bg-gray-100">
       <header className="border-b bg-white">
-        <div className="container mx-auto flex flex-col gap-4 px-4 py-5 sm:flex-row sm:items-center sm:justify-between">
+        <div className="container mx-auto flex flex-wrap items-center justify-between gap-3 px-4 py-4">
           <div>
-            <p className="text-xs uppercase tracking-wide text-gray-500">Workflow Automation</p>
-            <h1 className="text-3xl font-bold text-gray-900">Visual builder</h1>
-            <p className="mt-1 text-sm text-gray-600">
-              Chain together triggers, decisions, and actions for your agents—no code required.
-            </p>
+            <p className="text-xs uppercase tracking-wide text-gray-500">Workflow library</p>
+            <h1 className="text-2xl font-semibold text-gray-900">Blueprint the way your agent operates</h1>
           </div>
-          <div className="flex flex-wrap items-center gap-3">
-            <Button variant="outline" onClick={() => void fetchWorkflows()} disabled={isLoading}>
-              {isLoading ? "Refreshing..." : "Refresh"}
-            </Button>
-            <Button variant="outline" onClick={handleImportClick} disabled={isImporting}>
-              {isImporting ? "Importing..." : "Import JSON"}
-            </Button>
-            <Button onClick={handleCreateWorkflow} disabled={isCreating}>
-              {isCreating ? "Creating..." : "New workflow"}
-            </Button>
+          <div className="flex items-center gap-2">
+            <Link href="/">
+              <Button variant="ghost">Back to builder</Button>
+            </Link>
+            <Link href="/agents">
+              <Button variant="ghost">Agent playbooks</Button>
+            </Link>
+            <Button onClick={() => router.push("/workflows/create")}>Open canvas</Button>
           </div>
         </div>
       </header>
 
-      <input
-        ref={fileInputRef}
-        type="file"
-        accept="application/json"
-        className="hidden"
-        onChange={handleImportFileChange}
-      />
-
-      <main className="container mx-auto px-4 py-8">
-        {agentIdParam && (
-          <div className="mb-4 rounded-2xl border border-blue-200 bg-blue-50 p-4 text-sm text-blue-700">
-            Showing workflows scoped to agent <code className="font-mono text-xs">{agentIdParam}</code>.
-            <button
-              type="button"
-              onClick={() => router.push("/workflows")}
-              className="ml-3 rounded-full border border-blue-500 px-3 py-1 text-xs font-semibold text-blue-600 hover:bg-blue-100"
-            >
-              Clear filter
-            </button>
-          </div>
-        )}
-
-        <div className="mb-6 flex flex-wrap items-center gap-3">
-          <div className="flex items-center gap-2 text-sm">
-            <span className="text-xs font-semibold uppercase tracking-wide text-gray-500">Status</span>
-            <select
-              value={statusFilter}
-              onChange={(event) => setStatusFilter(event.target.value)}
-              className="rounded-lg border border-gray-300 px-3 py-2"
-            >
-              {statusFilters.map((option) => (
-                <option key={option.value} value={option.value}>
-                  {option.label}
-                </option>
-              ))}
-            </select>
-          </div>
-          <span className="text-xs text-gray-500">
-            {statusFilterLabel} · {isLoading ? "Loading..." : `${workflows.length} workflows`}
-          </span>
-        </div>
-
-        {error && (
-          <div className="mb-6 rounded-3xl border border-red-200 bg-red-50 p-4 text-sm text-red-700">{error}</div>
-        )}
-
-        {isLoading ? (
-          <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-            {Array.from({ length: 3 }).map((_, index) => (
-              <div key={index} className="h-48 animate-pulse rounded-3xl border border-gray-200 bg-white" />
-            ))}
-          </div>
-        ) : workflows.length === 0 ? (
-          <div className="rounded-3xl border border-dashed border-gray-300 bg-white p-12 text-center text-gray-600">
-            <p className="text-lg font-semibold">No workflows yet</p>
-            <p className="mt-2 text-sm text-gray-500">
-              Spin up your first automation. Connect triggers, condition logic, and actions just like n8n.
-            </p>
-            <Button className="mt-6" onClick={handleCreateWorkflow} disabled={isCreating}>
-              {isCreating ? "Creating..." : "Create workflow"}
+      <main className="container mx-auto px-4 py-10">
+        <section className="mb-10 rounded-3xl border border-gray-200 bg-white p-6 shadow-sm">
+          <div className="flex flex-wrap items-start justify-between gap-4">
+            <div className="max-w-2xl space-y-2">
+              <span className="inline-flex items-center gap-2 rounded-full bg-blue-100 px-3 py-1 text-xs font-semibold uppercase tracking-wide text-blue-700">
+                Saved playbooks
+              </span>
+              <h2 className="text-xl font-semibold text-gray-900">Launch-ready workflows you’ve staged</h2>
+              <p className="text-sm text-gray-600">
+                Each saved workflow remembers the template you started from and any notes you add before handing it to a client.
+              </p>
+            </div>
+              <Button variant="outline" onClick={() => setSavedWorkflows(() => {
+                persistWorkflows([]);
+                return [];
+              })}>
+              Clear library
             </Button>
           </div>
-        ) : (
-          <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-            {workflows.map((workflow) => (
-              <Link
-                key={workflow.id}
-                href={`/workflows/${workflow.id}`}
-                className="flex h-full flex-col rounded-3xl border border-gray-200 bg-white p-6 shadow-sm transition hover:-translate-y-1 hover:border-blue-300 hover:shadow-lg"
-              >
-                <div className="flex flex-1 flex-col">
-                  <div className="flex items-center gap-2">
-                    <span
-                      className={`rounded-full px-3 py-1 text-xs font-semibold uppercase ${
-                        workflow.status === "active"
-                          ? "bg-emerald-100 text-emerald-700"
-                          : workflow.status === "paused"
-                          ? "bg-amber-100 text-amber-700"
-                          : "bg-gray-200 text-gray-700"
-                      }`}
-                    >
-                      {workflow.status}
-                    </span>
-                    {workflow.agentId && (
-                      <span className="rounded-full bg-blue-100 px-3 py-1 text-xs font-semibold text-blue-700">
-                        Agent linked
-                      </span>
-                    )}
+
+          {savedWorkflows.length === 0 ? (
+            <div className="mt-6 rounded-2xl border border-dashed border-gray-300 bg-gray-50 p-8 text-center text-sm text-gray-600">
+              No saved workflows yet. Load a template below and click “Save to library” to keep a copy.
+            </div>
+          ) : (
+            <div className="mt-6 grid gap-4 lg:grid-cols-2">
+              {savedWorkflows.map((workflow) => {
+                const template = workflow.templateId
+                  ? workflowTemplates.find((item) => item.id === workflow.templateId)
+                  : undefined;
+                return (
+                    <div key={workflow.id} className="flex flex-col justify-between rounded-2xl border border-gray-200 bg-white p-5 shadow-sm">
+                    <div>
+                      <div className="flex items-start justify-between gap-3">
+                        <div>
+                          <p className="text-xs uppercase tracking-wide text-gray-500">Saved flow</p>
+                          <h3 className="mt-1 text-lg font-semibold text-gray-900">{workflow.name}</h3>
+                          <p className="mt-1 text-xs text-gray-500">Saved {formatDate(workflow.createdAt)}</p>
+                        </div>
+                        <Button variant="ghost" size="sm" onClick={() => handleDeleteSaved(workflow.id)}>
+                          Remove
+                        </Button>
+                      </div>
+                      {template ? (
+                        <p className="mt-3 text-sm text-gray-600">Based on <span className="font-semibold text-blue-600">{template.name}</span> · {template.category}</p>
+                      ) : null}
+                        {workflow.connectors?.length ? (
+                          <div className="mt-3 flex flex-wrap gap-2 text-[11px] font-semibold">
+                            {workflow.connectors.map((connector) => (
+                              <span
+                                key={`${workflow.id}-${connector.id}`}
+                                className={`rounded-full px-3 py-1 ${connector.enabled ? "bg-emerald-100 text-emerald-700" : "bg-gray-200 text-gray-600"}`}
+                              >
+                                {connector.label}
+                                {!connector.enabled ? " (off)" : ""}
+                              </span>
+                            ))}
+                          </div>
+                        ) : null}
+                      <textarea
+                        value={workflow.notes ?? ""}
+                        onChange={(event) => handleUpdateNotes(workflow.id, event.target.value)}
+                        placeholder="Add notes about handoff, owner expectations, or launch blockers."
+                        className="mt-4 w-full rounded-xl border border-gray-200 px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        rows={3}
+                      />
+                    </div>
+                    <div className="mt-4 flex flex-wrap gap-2">
+                      <Button onClick={() => handleLaunchTemplate(workflow.templateId ?? workflowTemplates[0]?.id ?? "")}>
+                        Open in workflow canvas
+                      </Button>
+                    </div>
                   </div>
-                  <h2 className="mt-3 text-xl font-semibold text-gray-900">{workflow.name}</h2>
-                  <p className="mt-2 flex-1 text-sm text-gray-600">
-                    {workflow.description ?? "Use the builder to define each step—from triggers to follow-ups."}
-                  </p>
-                </div>
-                <div className="mt-4 border-t border-dashed border-gray-200 pt-4 text-xs text-gray-500">
-                  <p>Updated {new Date(workflow.updatedAt).toLocaleString("en-US", { dateStyle: "short", timeStyle: "short" })}</p>
-                </div>
-                <div className="mt-4 flex gap-2">
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={(event) => {
-                      event.preventDefault();
-                      void handleClone(workflow.id);
-                    }}
-                    disabled={cloningId === workflow.id}
-                  >
-                    {cloningId === workflow.id ? "Cloning..." : "Clone"}
-                  </Button>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={(event) => {
-                      event.preventDefault();
-                      router.push(`/workflows/${workflow.id}`);
-                    }}
-                  >
-                    Open
-                  </Button>
-                </div>
-              </Link>
-            ))}
+                );
+              })}
+            </div>
+          )}
+        </section>
+
+        <section className="space-y-8">
+          <div className="flex flex-col gap-2">
+            <span className="inline-flex items-center gap-2 rounded-full bg-emerald-500/15 px-3 py-1 text-xs font-semibold uppercase tracking-wide text-emerald-700">
+              Proven templates
+            </span>
+            <h2 className="text-2xl font-semibold text-gray-900">Start from a workflow Main Street teams already trust</h2>
+            <p className="text-sm text-gray-600">
+              Pick a template to preload the canvas with triggers, AI logic, and analog touchpoints. Customize anything before you package it for a client.
+            </p>
           </div>
-        )}
+
+          {Object.entries(templatesByDifficulty).map(([difficulty, templates]) => (
+            <div key={difficulty} className="space-y-4">
+              <h3 className="text-sm font-semibold uppercase tracking-wide text-gray-500">{difficulty} workflows</h3>
+              <div className="grid gap-5 lg:grid-cols-3">
+                {templates.map((template) => (
+                  <div
+                    key={template.id}
+                    className="flex h-full flex-col justify-between rounded-3xl border border-gray-200 bg-white p-6 shadow-sm transition hover:-translate-y-1 hover:shadow-lg"
+                  >
+                    <div>
+                      <div className="flex items-center justify-between gap-3">
+                        <span className="rounded-full bg-blue-100 px-3 py-1 text-xs font-semibold text-blue-700">{template.category}</span>
+                        <span className="text-xs font-semibold uppercase text-gray-500">{template.heroStat}</span>
+                      </div>
+                      <h4 className="mt-3 text-lg font-semibold text-gray-900">{template.name}</h4>
+                      <p className="mt-2 text-sm text-gray-600">{template.headline}</p>
+                      <p className="mt-3 text-xs text-gray-500">{template.summary}</p>
+                      <ul className="mt-4 space-y-1 text-xs text-gray-600">
+                        {template.timeline.map((step) => (
+                          <li key={step}>• {step}</li>
+                        ))}
+                      </ul>
+                      <div className="mt-4 flex flex-wrap gap-2 text-[11px] font-semibold text-gray-500">
+                        {template.tags.map((tag) => (
+                          <span key={tag} className="rounded-full bg-gray-100 px-3 py-1">
+                            {tag}
+                          </span>
+                        ))}
+                      </div>
+                    </div>
+                    <div className="mt-6 flex flex-wrap gap-2">
+                      <Button onClick={() => handleLaunchTemplate(template.id)}>Open in builder</Button>
+                      <Button variant="outline" onClick={() => handleSaveTemplate(template.id, template.name)}>
+                        Save to library
+                      </Button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          ))}
+        </section>
       </main>
     </div>
   );

@@ -117,24 +117,27 @@ export default function DashboardPage() {
     }
   };
 
-  return (
-    <div className="min-h-screen bg-gray-100">
-      <header className="border-b bg-white">
-        <div className="container mx-auto flex items-center justify-between px-4 py-4">
-          <h1 className="text-2xl font-bold text-gray-900">Operations Dashboard</h1>
-          <div className="flex items-center gap-3">
-            <Button variant="outline" onClick={() => void fetchData()} disabled={isLoading}>
-              {isLoading ? "Refreshing..." : "Refresh"}
-            </Button>
-            <Link href="/agents">
-              <Button variant="ghost">Agent Library</Button>
-            </Link>
-            <Link href="/">
-              <Button variant="ghost">Builder</Button>
-            </Link>
+    return (
+      <div className="min-h-screen bg-gray-100">
+        <header className="border-b bg-white">
+          <div className="container mx-auto flex items-center justify-between px-4 py-4">
+            <h1 className="text-2xl font-bold text-gray-900">Operations Dashboard</h1>
+            <div className="flex items-center gap-3">
+              <Button variant="outline" onClick={() => void fetchData()} disabled={isLoading}>
+                {isLoading ? "Refreshing..." : "Refresh"}
+              </Button>
+              <Link href="/agents">
+                <Button variant="ghost">Agent Library</Button>
+              </Link>
+              <Link href="/workflows">
+                <Button variant="ghost">Workflows</Button>
+              </Link>
+              <Link href="/">
+                <Button variant="ghost">Builder</Button>
+              </Link>
+            </div>
           </div>
-        </div>
-      </header>
+        </header>
 
       <main className="container mx-auto px-4 py-8">
         {error && (
@@ -178,10 +181,10 @@ export default function DashboardPage() {
                   <div key={index} className="h-16 animate-pulse rounded-2xl bg-gray-100" />
                 ))}
               </div>
-            ) : sessions.length === 0 ? (
+              ) : sessions.length === 0 ? (
                 <div className="rounded-2xl border border-dashed border-gray-300 bg-gray-50 p-8 text-center text-sm text-gray-600">
-                  No conversations yet. Once you deploy an agent and start receiving calls/texts, they’ll show up here.
-              </div>
+                  No conversations yet. Once you deploy an agent and start receiving calls/texts, they&apos;ll show up here.
+                </div>
             ) : (
               <div className="space-y-3">
                 {sessions.map((session) => (
@@ -231,10 +234,10 @@ export default function DashboardPage() {
                   <div key={index} className="h-16 animate-pulse rounded-2xl bg-gray-100" />
                 ))}
               </div>
-            ) : appointments.length === 0 ? (
+              ) : appointments.length === 0 ? (
                 <div className="rounded-2xl border border-dashed border-gray-300 bg-gray-50 p-8 text-center text-sm text-gray-600">
-                  No appointments scheduled yet. When agents book slots during calls/texts, they’ll appear here.
-              </div>
+                  No appointments scheduled yet. When agents book slots during calls/texts, they&apos;ll appear here.
+                </div>
             ) : (
               <div className="space-y-3">
                 {appointments.map((appointment) => (

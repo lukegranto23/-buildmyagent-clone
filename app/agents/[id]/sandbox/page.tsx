@@ -130,7 +130,7 @@ export default function AgentSandboxPage() {
           <section className="flex h-[70vh] flex-col rounded-3xl border border-gray-200 bg-white shadow-sm">
             <div className="flex-1 space-y-4 overflow-y-auto p-6">
                 <div className="max-w-xl rounded-2xl bg-blue-50 px-4 py-3 text-sm leading-relaxed text-blue-900 shadow-sm">
-                  Hi there! I’m ready to role-play this agent. Ask me a question a prospect or customer might ask.
+                  Hi there! I&apos;m ready to role-play this agent. Ask me a question a prospect or customer might ask.
               </div>
               {messages.map((message, index) => (
                 <div
