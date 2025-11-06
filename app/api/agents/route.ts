@@ -1,5 +1,7 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
+import { getServerSession } from "next-auth";
+import { authOptions } from "@/app/api/auth/[...nextauth]/route";
 
 import { prisma } from "@/lib/prisma";
 import { hydrateAgentRecord } from "@/lib/runtime";
@@ -39,7 +41,11 @@ function safeStringify(value: unknown) {
 }
 
 export async function GET() {
+  const session = await getServerSession(authOptions);
+  const userId = session?.user?.id;
+
   const agents = await prisma.agent.findMany({
+    where: userId ? { userId } : undefined,
     orderBy: { createdAt: "desc" },
   });
 
@@ -47,12 +53,20 @@ export async function GET() {
 }
 
 export async function POST(request: Request) {
+  const session = await getServerSession(authOptions);
+  const userId = session?.user?.id;
+
+  if (!userId) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
   try {
     const data = await request.json();
     const parsed = agentPayloadSchema.parse(data);
 
     const agent = await prisma.agent.create({
       data: {
+        userId,
         name: parsed.name,
         offerName: parsed.offerName,
         clientName: parsed.clientName ?? null,

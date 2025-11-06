@@ -2,19 +2,44 @@
 
 import { useState } from "react";
 import Link from "next/link";
+import { signIn } from "next-auth/react";
+import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 
 export default function SignInPage() {
   const [email, setEmail] = useState("");
+  const [isLoading, setIsLoading] = useState(false);
+  const router = useRouter();
 
-  const handleEmailSignIn = () => {
-    // TODO: Implement email sign in
-    console.log("Sign in with email:", email);
+  const handleEmailSignIn = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setIsLoading(true);
+    try {
+      const result = await signIn("email", {
+        email,
+        redirect: false,
+      });
+      if (result?.ok) {
+        router.push("/dashboard");
+      } else {
+        alert("Check your email for a sign-in link!");
+      }
+    } catch (error) {
+      console.error("Sign in error:", error);
+      alert("Failed to send sign-in email");
+    } finally {
+      setIsLoading(false);
+    }
   };
 
-  const handleGoogleSignIn = () => {
-    // TODO: Implement Google OAuth
-    console.log("Sign in with Google");
+  const handleGoogleSignIn = async () => {
+    setIsLoading(true);
+    try {
+      await signIn("google", { callbackUrl: "/dashboard" });
+    } catch (error) {
+      console.error("Google sign in error:", error);
+      setIsLoading(false);
+    }
   };
 
   return (
@@ -40,9 +65,15 @@ export default function SignInPage() {
             />
           </div>
 
-          <Button onClick={handleEmailSignIn} className="w-full bg-blue-600 text-white hover:bg-blue-700">
-            Continue with Email
-          </Button>
+          <form onSubmit={handleEmailSignIn}>
+            <Button
+              type="submit"
+              disabled={isLoading || !email}
+              className="w-full bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-50"
+            >
+              {isLoading ? "Sending..." : "Continue with Email"}
+            </Button>
+          </form>
 
           <div className="relative my-6">
             <div className="absolute inset-0 flex items-center">
@@ -55,8 +86,9 @@ export default function SignInPage() {
 
           <Button
             onClick={handleGoogleSignIn}
+            disabled={isLoading}
             variant="outline"
-            className="w-full flex items-center justify-center gap-2"
+            className="w-full flex items-center justify-center gap-2 disabled:opacity-50"
           >
             <svg className="w-5 h-5" viewBox="0 0 24 24">
               <path

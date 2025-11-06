@@ -1,5 +1,7 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
+import { getServerSession } from "next-auth";
+import { authOptions } from "@/app/api/auth/[...nextauth]/route";
 
 import { prisma } from "@/lib/prisma";
 
@@ -15,12 +17,20 @@ const workflowSchema = z.object({
 });
 
 export async function GET(request: Request) {
+  const session = await getServerSession(authOptions);
+  const userId = session?.user?.id;
+
+  if (!userId) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
   const url = new URL(request.url);
   const agentId = url.searchParams.get("agentId");
   const status = url.searchParams.get("status");
 
   const workflows = await prisma.workflow.findMany({
     where: {
+      userId,
       ...(agentId && { agentId }),
       ...(status && { status }),
     },
@@ -36,12 +46,20 @@ export async function GET(request: Request) {
 }
 
 export async function POST(request: Request) {
+  const session = await getServerSession(authOptions);
+  const userId = session?.user?.id;
+
+  if (!userId) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
   try {
     const data = await request.json();
     const parsed = workflowSchema.parse(data);
 
     const workflow = await prisma.workflow.create({
       data: {
+        userId,
         agentId: parsed.agentId ?? null,
         name: parsed.name,
         description: parsed.description ?? null,

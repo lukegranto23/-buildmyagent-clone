@@ -7,40 +7,12 @@ import { Testimonials } from "@/components/Testimonials";
 import { FAQ } from "@/components/FAQ";
 import { Community } from "@/components/Community";
 import { WorkflowBuilder } from "@/components/workflows/WorkflowBuilder";
+import { Navigation } from "@/components/Navigation";
 
 export default function Home() {
   return (
     <div className="min-h-screen bg-white">
-        {/* Header */}
-        <header className="border-b">
-          <nav className="container mx-auto flex items-center justify-between px-4 py-4">
-            <Link href="/" className="flex items-center gap-2 text-xl font-bold">
-              <span>Main Street Agent</span>
-              <span className="text-gray-500">Lab</span>
-            </Link>
-            <Link href="/agents" className="text-gray-600 hover:text-gray-900">
-              Agents
-            </Link>
-            <Link href="/workflows" className="text-gray-600 hover:text-gray-900">
-              Workflows
-            </Link>
-            <Link href="#method" className="text-gray-600 hover:text-gray-900">
-              Method
-            </Link>
-            <Link href="#integrations" className="text-gray-600 hover:text-gray-900">
-              Integrations
-            </Link>
-            <Link href="#pricing" className="text-gray-600 hover:text-gray-900">
-              Plans
-            </Link>
-            <Link href="#faq" className="text-gray-600 hover:text-gray-900">
-              FAQ
-            </Link>
-            <Link href="#community" className="text-gray-600 hover:text-gray-900">
-              Collective
-            </Link>
-          </nav>
-        </header>
+        <Navigation />
 
         <main>
           {/* Hero Section */}

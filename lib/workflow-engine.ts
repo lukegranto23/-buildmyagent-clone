@@ -132,33 +132,153 @@ async function executeTransform(node: WorkflowNode, context: ExecutionContext): 
 }
 
 async function executeDatabase(node: WorkflowNode, context: ExecutionContext): Promise<unknown> {
-  const { query, type = "select" } = node.config || {};
-  if (!query) return null;
-
-  const resolvedQuery = resolveTemplate(query as string, context.variables);
-
-  // For now, we'll use Prisma directly
-  // In production, you'd want a more flexible query builder
-  if (type === "select") {
-    // This is a simplified example - you'd need proper SQL parsing
-    return { rows: [] };
+  const { model, action, where, data, include } = node.config || {};
+  if (!model || !action) {
+    throw new Error("Database node requires 'model' and 'action'");
   }
-  return null;
+
+  const { prisma } = await import("@/lib/prisma");
+  const prismaModel = (prisma as Record<string, unknown>)[model as string] as {
+    findMany: (args: unknown) => Promise<unknown[]>;
+    findUnique: (args: unknown) => Promise<unknown>;
+    create: (args: unknown) => Promise<unknown>;
+    update: (args: unknown) => Promise<unknown>;
+    delete: (args: unknown) => Promise<unknown>;
+  };
+
+  if (!prismaModel) {
+    throw new Error(`Model ${model} not found`);
+  }
+
+  try {
+    switch (action) {
+      case "findMany": {
+        const resolvedWhere = where ? JSON.parse(resolveTemplate(JSON.stringify(where), context.variables)) : undefined;
+        const resolvedInclude = include ? JSON.parse(resolveTemplate(JSON.stringify(include), context.variables)) : undefined;
+        const result = await prismaModel.findMany({ where: resolvedWhere, include: resolvedInclude });
+        return { rows: result };
+      }
+      case "findUnique": {
+        const resolvedWhere = where ? JSON.parse(resolveTemplate(JSON.stringify(where), context.variables)) : undefined;
+        if (!resolvedWhere) throw new Error("findUnique requires 'where'");
+        const result = await prismaModel.findUnique({ where: resolvedWhere });
+        return { row: result };
+      }
+      case "create": {
+        const resolvedData = data ? JSON.parse(resolveTemplate(JSON.stringify(data), context.variables)) : undefined;
+        if (!resolvedData) throw new Error("create requires 'data'");
+        const result = await prismaModel.create({ data: resolvedData });
+        return { row: result };
+      }
+      case "update": {
+        const resolvedWhere = where ? JSON.parse(resolveTemplate(JSON.stringify(where), context.variables)) : undefined;
+        const resolvedData = data ? JSON.parse(resolveTemplate(JSON.stringify(data), context.variables)) : undefined;
+        if (!resolvedWhere || !resolvedData) throw new Error("update requires 'where' and 'data'");
+        const result = await prismaModel.update({ where: resolvedWhere, data: resolvedData });
+        return { row: result };
+      }
+      case "delete": {
+        const resolvedWhere = where ? JSON.parse(resolveTemplate(JSON.stringify(where), context.variables)) : undefined;
+        if (!resolvedWhere) throw new Error("delete requires 'where'");
+        const result = await prismaModel.delete({ where: resolvedWhere });
+        return { row: result };
+      }
+      default:
+        throw new Error(`Unknown action: ${action}`);
+    }
+  } catch (error) {
+    await logExecution(
+      context.executionId,
+      "error",
+      `Database operation failed: ${error instanceof Error ? error.message : String(error)}`,
+      node.id
+    );
+    throw error;
+  }
 }
 
 async function executeEmail(node: WorkflowNode, context: ExecutionContext): Promise<unknown> {
-  const { to, subject, body } = node.config || {};
-  // Email integration would go here
-  await logExecution(context.executionId, "info", `Email sent to ${to}`, node.id);
-  return { success: true, to, subject };
+  const { to, subject, body, from } = node.config || {};
+  if (!to || !subject) {
+    throw new Error("Email node requires 'to' and 'subject'");
+  }
+
+  const resolvedTo = resolveTemplate(to as string, context.variables);
+  const resolvedSubject = resolveTemplate(subject as string, context.variables);
+  const resolvedBody = body ? resolveTemplate(body as string, context.variables) : "";
+
+  try {
+    const { sendEmail } = await import("@/lib/email");
+    const result = await sendEmail({
+      to: resolvedTo,
+      subject: resolvedSubject,
+      html: resolvedBody,
+      from: from ? resolveTemplate(from as string, context.variables) : undefined,
+    });
+
+    await logExecution(context.executionId, "info", `Email sent to ${resolvedTo}`, node.id, result);
+    return { success: true, to: resolvedTo, subject: resolvedSubject, messageId: result.messageId };
+  } catch (error) {
+    await logExecution(
+      context.executionId,
+      "error",
+      `Email send failed: ${error instanceof Error ? error.message : String(error)}`,
+      node.id
+    );
+    throw error;
+  }
 }
 
 async function executeSlack(node: WorkflowNode, context: ExecutionContext): Promise<unknown> {
-  const { channel, message } = node.config || {};
-  const resolvedMessage = resolveTemplate(message as string, context.variables);
-  // Slack integration would go here
-  await logExecution(context.executionId, "info", `Slack message sent to ${channel}`, node.id);
-  return { success: true, channel, message: resolvedMessage };
+  const { webhookUrl, token, channel, message, blocks } = node.config || {};
+  if (!message && !blocks) {
+    throw new Error("Slack node requires 'message' or 'blocks'");
+  }
+
+  const resolvedMessage = message ? resolveTemplate(message as string, context.variables) : undefined;
+  const resolvedChannel = channel ? resolveTemplate(channel as string, context.variables) : undefined;
+
+  try {
+    const { sendSlackMessage, sendSlackMessageWithToken } = await import("@/lib/slack");
+
+    let result;
+    if (webhookUrl) {
+      const resolvedWebhook = resolveTemplate(webhookUrl as string, context.variables);
+      result = await sendSlackMessage({
+        webhookUrl: resolvedWebhook,
+        channel: resolvedChannel,
+        text: resolvedMessage,
+        blocks: blocks as unknown[],
+      });
+    } else if (token && resolvedChannel) {
+      const resolvedToken = resolveTemplate(token as string, context.variables);
+      result = await sendSlackMessageWithToken({
+        token: resolvedToken,
+        channel: resolvedChannel,
+        text: resolvedMessage,
+        blocks: blocks as unknown[],
+      });
+    } else {
+      throw new Error("Slack node requires either 'webhookUrl' or 'token' + 'channel'");
+    }
+
+    await logExecution(
+      context.executionId,
+      "info",
+      `Slack message sent to ${resolvedChannel || "channel"}`,
+      node.id,
+      result
+    );
+    return { success: true, channel: resolvedChannel, message: resolvedMessage, ts: result.ts };
+  } catch (error) {
+    await logExecution(
+      context.executionId,
+      "error",
+      `Slack send failed: ${error instanceof Error ? error.message : String(error)}`,
+      node.id
+    );
+    throw error;
+  }
 }
 
 async function executeWebhook(node: WorkflowNode, context: ExecutionContext): Promise<unknown> {
