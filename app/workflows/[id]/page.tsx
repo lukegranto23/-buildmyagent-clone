@@ -19,6 +19,7 @@ import ReactFlow, {
 } from "reactflow";
 
 import { Button } from "@/components/ui/button";
+import { formatDistanceToNow } from "date-fns";
 
 type WorkflowNodeData = {
   label: string;
@@ -308,6 +309,9 @@ export default function WorkflowBuilderPage() {
   const [sessionId, setSessionId] = useState<string | null>(null);
   const [presenceName, setPresenceName] = useState<string | null>(null);
   const [presenceColor, setPresenceColor] = useState<string | null>(null);
+  const [isEditingPresence, setIsEditingPresence] = useState(false);
+  const [pendingPresenceName, setPendingPresenceName] = useState("");
+  const [pendingPresenceColor, setPendingPresenceColor] = useState<string>(() => PRESENCE_COLORS[0]);
   const heartbeatRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const presenceIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
@@ -376,24 +380,10 @@ useEffect(() => {
 useEffect(() => {
   if (!workflowId || !sessionId) return;
 
-  const sendHeartbeat = async () => {
-    try {
-      await fetch(`/api/workflows/${workflowId}/presence`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          sessionId,
-          displayName: presenceName,
-          color: presenceColor,
-        }),
-      });
-    } catch (error) {
-      console.error(error);
-    }
-  };
-
   void sendHeartbeat();
-  heartbeatRef.current = setInterval(sendHeartbeat, 20_000);
+  heartbeatRef.current = setInterval(() => {
+    void sendHeartbeat();
+  }, 20_000);
 
   const handleBeforeUnload = () => {
     try {
@@ -428,7 +418,7 @@ useEffect(() => {
       console.error(error);
     }
   };
-}, [presenceColor, presenceName, sessionId, workflowId]);
+}, [sendHeartbeat, sessionId, workflowId]);
 
 useEffect(() => {
   if (!workflowId) return;
@@ -710,6 +700,54 @@ useEffect(() => {
     }
   }, [workflowId]);
 
+  const sendHeartbeat = useCallback(async () => {
+    if (!workflowId || !sessionId) return;
+    try {
+      await fetch(`/api/workflows/${workflowId}/presence`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          sessionId,
+          displayName: presenceName,
+          color: presenceColor,
+        }),
+      });
+    } catch (error) {
+      console.error(error);
+    }
+  }, [presenceColor, presenceName, sessionId, workflowId]);
+
+  const openPresenceEditor = useCallback(() => {
+    setIsEditingPresence(true);
+    setPendingPresenceName(presenceName ?? "");
+    setPendingPresenceColor(presenceColor ?? PRESENCE_COLORS[0]);
+  }, [presenceColor, presenceName]);
+
+  const handlePresenceSave = useCallback(
+    async (event: React.FormEvent<HTMLFormElement>) => {
+      event.preventDefault();
+      if (!workflowId || !sessionId) {
+        setIsEditingPresence(false);
+        return;
+      }
+
+      const trimmedName = pendingPresenceName.trim() || `Teammate ${Math.floor(Math.random() * 900) + 100}`;
+      setPresenceName(trimmedName);
+      setPresenceColor(pendingPresenceColor);
+      window.localStorage.setItem("workflow-presence-name", trimmedName);
+      window.localStorage.setItem(`workflow-presence-color-${sessionId}`, pendingPresenceColor);
+      setIsEditingPresence(false);
+
+      await sendHeartbeat();
+      await fetchPresence();
+    },
+    [fetchPresence, pendingPresenceColor, pendingPresenceName, sendHeartbeat, sessionId, workflowId]
+  );
+
+  const handlePresenceCancel = useCallback(() => {
+    setIsEditingPresence(false);
+  }, []);
+
   const handleAddNode = (item: NodeLibraryItem) => {
     const id = `${item.type}-${Date.now()}`;
     const newNode: WorkflowNode = {
@@ -907,6 +945,14 @@ useEffect(() => {
     return participant.displayName?.trim() || "Teammate";
   };
 
+  const formatPresenceTooltip = (timestamp: string) => {
+    try {
+      return `Last active ${formatDistanceToNow(new Date(timestamp), { addSuffix: true })}`;
+    } catch (error) {
+      return "Active";
+    }
+  };
+
   if (!workflowId) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-gray-100">
@@ -949,36 +995,40 @@ useEffect(() => {
               >
                 {workflow.status}
               </span>
-              {presence.length > 0 && (
-                <div className="flex flex-wrap items-center gap-2 text-xs text-gray-500">
-                  <span>Active now:</span>
-                  {selfPresence && (
+              <div className="flex flex-wrap items-center gap-2 text-xs text-gray-500">
+                <span>Active now:</span>
+                {presence.length === 0 && <span className="text-gray-400">Just you</span>}
+                {selfPresence && (
+                  <span
+                    title={formatPresenceTooltip(selfPresence.lastSeen)}
+                    className="inline-flex items-center gap-1 rounded-full border border-gray-200 bg-white px-2 py-1"
+                    style={{ borderColor: selfPresence.color ?? undefined }}
+                  >
                     <span
-                      className="inline-flex items-center gap-1 rounded-full border border-gray-200 bg-white px-2 py-1"
-                      style={{ borderColor: selfPresence.color ?? undefined }}
-                    >
-                      <span
-                        className="inline-block h-2 w-2 rounded-full"
-                        style={{ backgroundColor: selfPresence.color ?? "#10b981" }}
-                      />
-                      {formatPresenceName(selfPresence)}
-                    </span>
-                  )}
-                  {otherPresence.map((participant) => (
+                      className="inline-block h-2 w-2 rounded-full"
+                      style={{ backgroundColor: selfPresence.color ?? "#10b981" }}
+                    />
+                    {formatPresenceName(selfPresence)}
+                  </span>
+                )}
+                {otherPresence.map((participant) => (
+                  <span
+                    key={participant.sessionId}
+                    title={formatPresenceTooltip(participant.lastSeen)}
+                    className="inline-flex items-center gap-1 rounded-full border border-gray-200 bg-white px-2 py-1"
+                    style={{ borderColor: participant.color ?? undefined }}
+                  >
                     <span
-                      key={participant.sessionId}
-                      className="inline-flex items-center gap-1 rounded-full border border-gray-200 bg-white px-2 py-1"
-                      style={{ borderColor: participant.color ?? undefined }}
-                    >
-                      <span
-                        className="inline-block h-2 w-2 rounded-full"
-                        style={{ backgroundColor: participant.color ?? "#6366f1" }}
-                      />
-                      {formatPresenceName(participant)}
-                    </span>
-                  ))}
-                </div>
-              )}
+                      className="inline-block h-2 w-2 rounded-full"
+                      style={{ backgroundColor: participant.color ?? "#6366f1" }}
+                    />
+                    {formatPresenceName(participant)}
+                  </span>
+                ))}
+                <Button variant="ghost" size="sm" onClick={openPresenceEditor} className="ml-2 px-2 py-0 text-xs">
+                  Edit profile
+                </Button>
+              </div>
             </div>
             <div className="mt-3 flex flex-col gap-2 lg:flex-row lg:items-center lg:gap-4">
               <input
@@ -1118,6 +1168,48 @@ useEffect(() => {
                       </div>
                     )}
                   </div>
+
+                  {isEditingPresence && (
+                    <form
+                      onSubmit={handlePresenceSave}
+                      className="rounded-2xl border border-gray-200 bg-white p-4 text-xs text-gray-600 shadow-sm"
+                    >
+                      <p className="text-sm font-semibold text-gray-900">Edit your profile</p>
+                      <label className="mt-3 flex flex-col gap-1 text-xs font-semibold uppercase tracking-wide text-gray-500">
+                        Display name
+                        <input
+                          value={pendingPresenceName}
+                          onChange={(event) => setPendingPresenceName(event.target.value)}
+                          className="rounded-lg border border-gray-300 px-3 py-2 text-sm"
+                        />
+                      </label>
+                      <div className="mt-3">
+                        <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">Indicator color</p>
+                        <div className="mt-2 flex flex-wrap gap-2">
+                          {PRESENCE_COLORS.map((color) => (
+                            <button
+                              key={color}
+                              type="button"
+                              onClick={() => setPendingPresenceColor(color)}
+                              className={`h-6 w-6 rounded-full border ${
+                                pendingPresenceColor === color ? "border-gray-900 ring-2 ring-gray-300" : "border-transparent"
+                              }`}
+                              style={{ backgroundColor: color }}
+                              aria-label={`Select color ${color}`}
+                            />
+                          ))}
+                        </div>
+                      </div>
+                      <div className="mt-4 flex gap-2">
+                        <Button size="sm" type="submit">
+                          Save
+                        </Button>
+                        <Button type="button" variant="ghost" size="sm" onClick={handlePresenceCancel}>
+                          Cancel
+                        </Button>
+                      </div>
+                    </form>
+                  )}
 
                   <div>
                     <div className="flex items-center justify-between">
