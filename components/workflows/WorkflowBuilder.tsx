@@ -38,10 +38,11 @@ import {
   Copy,
   Trash2,
   Play,
-  Save,
   PanelRightOpen,
   PanelLeftOpen,
   Loader2,
+  PlugZap,
+  Rocket,
 } from "lucide-react";
 
 type FieldDefinition = (typeof workflowModules)[number]["fields"][number];
@@ -87,10 +88,27 @@ export function WorkflowBuilder({ templateId }: WorkflowBuilderProps = {}) {
   const [isRightPanelOpen, setIsRightPanelOpen] = useState(true);
   const [isLeftPanelOpen, setIsLeftPanelOpen] = useState(true);
   const [isSimulating, setIsSimulating] = useState(false);
+  const [showConnectors, setShowConnectors] = useState(false);
+  const [showDeploy, setShowDeploy] = useState(false);
+  const [connectorState, setConnectorState] = useState<Record<string, boolean>>(() => {
+    const integrations = workflowModules.filter((module) => module.category === "Integrations");
+    return integrations.reduce<Record<string, boolean>>((acc, module) => {
+      acc[module.id] = true;
+      return acc;
+    }, {});
+  });
+  const handleToggleConnector = useCallback((id: string, value: boolean) => {
+    setConnectorState((prev) => ({ ...prev, [id]: value }));
+  }, []);
 
   const selectedNode = useMemo(
     () => nodes.find((node) => node.id === selectedNodeId),
     [nodes, selectedNodeId]
+  );
+
+  const integrationModules = useMemo(
+    () => workflowModules.filter((module) => module.category === "Integrations"),
+    []
   );
 
   useEffect(() => {
@@ -320,6 +338,9 @@ export function WorkflowBuilder({ templateId }: WorkflowBuilderProps = {}) {
           <Button variant="outline" size="sm" onClick={() => setIsRightPanelOpen((prev) => !prev)}>
             {isRightPanelOpen ? <PanelRightOpen className="mr-1 h-4 w-4" /> : <PanelLeftOpen className="mr-1 h-4 w-4" />}Inspector
           </Button>
+          <Button variant="outline" size="sm" onClick={() => setShowConnectors(true)}>
+            <PlugZap className="mr-1 h-4 w-4" />Connectors
+          </Button>
           <Button variant="outline" size="sm" onClick={handleDuplicate} disabled={!selectedNode}>
             <Copy className="mr-1 h-4 w-4" />Duplicate
           </Button>
@@ -329,8 +350,8 @@ export function WorkflowBuilder({ templateId }: WorkflowBuilderProps = {}) {
           <Button size="sm" onClick={handleSimulateRun} disabled={isSimulating}>
             {isSimulating ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Play className="mr-2 h-4 w-4" />}Run dry test
           </Button>
-          <Button size="sm" variant="outline">
-            <Save className="mr-1 h-4 w-4" />Save draft
+          <Button size="sm" variant="outline" onClick={() => setShowDeploy(true)}>
+            <Rocket className="mr-1 h-4 w-4" />Deploy
           </Button>
         </div>
       </div>
@@ -487,6 +508,133 @@ export function WorkflowBuilder({ templateId }: WorkflowBuilderProps = {}) {
             )}
           </aside>
         ) : null}
+      </div>
+
+      {showConnectors ? (
+        <ConnectorModal
+          connectors={integrationModules}
+          state={connectorState}
+          onToggle={handleToggleConnector}
+          onClose={() => setShowConnectors(false)}
+        />
+      ) : null}
+
+      {showDeploy ? <DeployModal onClose={() => setShowDeploy(false)} /> : null}
+    </div>
+  );
+}
+
+type ConnectorModalProps = {
+  connectors: WorkflowModule[];
+  state: Record<string, boolean>;
+  onToggle: (id: string, value: boolean) => void;
+  onClose: () => void;
+};
+
+function ConnectorModal({ connectors, state, onToggle, onClose }: ConnectorModalProps) {
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/70 px-4">
+      <div className="w-full max-w-3xl rounded-3xl bg-white shadow-2xl">
+        <div className="flex items-center justify-between border-b border-gray-200 px-6 py-4">
+          <div>
+            <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">Connectors</p>
+            <h3 className="text-lg font-semibold text-gray-900">Manage phone bridges, CRMs, and calendars</h3>
+            <p className="text-sm text-gray-600">Flip on the integrations you plan to wire up during deployment. This helps owners visualize the handoff.</p>
+          </div>
+          <Button variant="ghost" onClick={onClose}>Close</Button>
+        </div>
+        <div className="max-h-[60vh] overflow-y-auto px-6 py-4">
+          <div className="grid gap-4 sm:grid-cols-2">
+            {connectors.map((connector) => (
+              <div key={connector.id} className="flex flex-col justify-between rounded-2xl border border-gray-200 bg-gray-50 p-4">
+                <div>
+                  <p className="text-sm font-semibold text-gray-900">{connector.title}</p>
+                  <p className="text-xs text-gray-500">{connector.subtitle}</p>
+                  <p className="mt-2 text-xs text-gray-600">{connector.description}</p>
+                </div>
+                <div className="mt-3 flex items-center justify-between">
+                  <span className="text-xs font-semibold uppercase tracking-wide text-gray-500">Enabled</span>
+                  <Switch
+                    checked={state[connector.id] ?? false}
+                    onCheckedChange={(checked) => onToggle(connector.id, checked)}
+                  />
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+type DeployModalProps = {
+  onClose: () => void;
+};
+
+function DeployModal({ onClose }: DeployModalProps) {
+  const [environment, setEnvironment] = useState("staging");
+  const [domain, setDomain] = useState("agents.mainstreet.dev");
+  const [notifyEmail, setNotifyEmail] = useState("founder@mainstreet.cool");
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/70 px-4">
+      <div className="w-full max-w-xl rounded-3xl bg-white shadow-2xl">
+        <div className="flex items-center justify-between border-b border-gray-200 px-6 py-4">
+          <div>
+            <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">Deployment preview</p>
+            <h3 className="text-lg font-semibold text-gray-900">Ship this workflow to a Main Street client</h3>
+            <p className="text-sm text-gray-600">Pick an environment and we’ll prep the webhook docs, connector checklist, and launch script.</p>
+          </div>
+          <Button variant="ghost" onClick={onClose}>Close</Button>
+        </div>
+        <div className="space-y-4 px-6 py-6">
+          <div className="grid gap-4 sm:grid-cols-2">
+            <label className="flex flex-col gap-2">
+              <span className="text-xs font-semibold uppercase tracking-wide text-gray-500">Environment</span>
+              <select
+                value={environment}
+                onChange={(event) => setEnvironment(event.target.value)}
+                className="rounded-xl border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+              >
+                <option value="staging">Staging pod</option>
+                <option value="production">Production</option>
+                <option value="sandbox">Client sandbox</option>
+              </select>
+            </label>
+            <label className="flex flex-col gap-2">
+              <span className="text-xs font-semibold uppercase tracking-wide text-gray-500">Custom domain</span>
+              <input
+                value={domain}
+                onChange={(event) => setDomain(event.target.value)}
+                className="rounded-xl border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+              />
+            </label>
+            <label className="flex flex-col gap-2 sm:col-span-2">
+              <span className="text-xs font-semibold uppercase tracking-wide text-gray-500">Send launch summary to</span>
+              <input
+                value={notifyEmail}
+                onChange={(event) => setNotifyEmail(event.target.value)}
+                className="rounded-xl border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+              />
+            </label>
+          </div>
+          <div className="rounded-2xl bg-gray-50 p-4 text-sm text-gray-600">
+            <p className="font-semibold text-gray-900">What happens next</p>
+            <ul className="mt-2 space-y-1 text-xs">
+              <li>• We’ll generate connector config docs with API keys highlighted.</li>
+              <li>• Your deployment runbook includes analog collateral instructions.</li>
+              <li>• Owners get a plain-English summary email once you flip the switch.</li>
+            </ul>
+          </div>
+          <div className="flex justify-end gap-2">
+            <Button variant="ghost" onClick={onClose}>Cancel</Button>
+            <Button>
+              <Rocket className="mr-2 h-4 w-4" />
+              Generate handoff kit
+            </Button>
+          </div>
+        </div>
       </div>
     </div>
   );

@@ -25,6 +25,9 @@ export default function Home() {
             <Link href="/agents" className="text-gray-600 hover:text-gray-900">
               Agents
             </Link>
+            <Link href="/workflows" className="text-gray-600 hover:text-gray-900">
+              Workflows
+            </Link>
             <Link href="#method" className="text-gray-600 hover:text-gray-900">
               Method
             </Link>
@@ -47,7 +50,7 @@ export default function Home() {
         </nav>
       </header>
 
-      <main>
+        <main>
           {/* Hero Section */}
           <section className="container mx-auto px-4 py-20">
             <AgentBuilder />

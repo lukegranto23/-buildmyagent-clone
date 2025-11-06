@@ -141,23 +141,26 @@ export default function AgentsPage() {
     await copyToClipboard("playbook", payload);
   };
 
-  return (
-    <div className="min-h-screen bg-gray-100">
-      <header className="border-b bg-white">
-        <div className="container mx-auto flex items-center justify-between px-4 py-4">
-          <Link href="/" className="text-xl font-bold">
-            Main Street Agent Library
-          </Link>
-          <div className="flex items-center gap-3">
-            <Link href="/">
-              <Button variant="ghost">Back to builder</Button>
+    return (
+      <div className="min-h-screen bg-gray-100">
+        <header className="border-b bg-white">
+          <div className="container mx-auto flex items-center justify-between px-4 py-4">
+            <Link href="/" className="text-xl font-bold">
+              Main Street Agent Library
             </Link>
-            <Link href="/agents/create">
-              <Button>Create new agent</Button>
-            </Link>
+            <div className="flex items-center gap-3">
+              <Link href="/">
+                <Button variant="ghost">Back to builder</Button>
+              </Link>
+              <Link href="/workflows">
+                <Button variant="ghost">Workflows</Button>
+              </Link>
+              <Link href="/agents/create">
+                <Button>Create new agent</Button>
+              </Link>
+            </div>
           </div>
-        </div>
-      </header>
+        </header>
 
       <main className="container mx-auto px-4 py-8">
         <div className="flex flex-col gap-4 pb-6 sm:flex-row sm:items-center sm:justify-between">

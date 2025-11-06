@@ -329,23 +329,26 @@ function CreateAgentPageContent() {
     }
   };
 
-  return (
-    <div className="min-h-screen bg-gray-100">
-      <header className="border-b bg-white">
-        <div className="container mx-auto flex items-center justify-between px-4 py-4">
-          <Link href="/" className="text-xl font-bold">
-            Main Street Agent Lab
-          </Link>
-          <div className="flex items-center gap-3">
-            <Link href="/">
-              <Button variant="ghost">Back to Builder</Button>
+    return (
+      <div className="min-h-screen bg-gray-100">
+        <header className="border-b bg-white">
+          <div className="container mx-auto flex items-center justify-between px-4 py-4">
+            <Link href="/" className="text-xl font-bold">
+              Main Street Agent Lab
             </Link>
-            <Link href="/agents">
-              <Button variant="outline">My Agents</Button>
-            </Link>
+            <div className="flex items-center gap-3">
+              <Link href="/">
+                <Button variant="ghost">Back to Builder</Button>
+              </Link>
+              <Link href="/workflows">
+                <Button variant="ghost">Workflows</Button>
+              </Link>
+              <Link href="/agents">
+                <Button variant="outline">My Agents</Button>
+              </Link>
+            </div>
           </div>
-        </div>
-      </header>
+        </header>
 
       <main className="container mx-auto px-4 py-8">
         <div className="mb-8 max-w-4xl">

@@ -117,24 +117,27 @@ export default function DashboardPage() {
     }
   };
 
-  return (
-    <div className="min-h-screen bg-gray-100">
-      <header className="border-b bg-white">
-        <div className="container mx-auto flex items-center justify-between px-4 py-4">
-          <h1 className="text-2xl font-bold text-gray-900">Operations Dashboard</h1>
-          <div className="flex items-center gap-3">
-            <Button variant="outline" onClick={() => void fetchData()} disabled={isLoading}>
-              {isLoading ? "Refreshing..." : "Refresh"}
-            </Button>
-            <Link href="/agents">
-              <Button variant="ghost">Agent Library</Button>
-            </Link>
-            <Link href="/">
-              <Button variant="ghost">Builder</Button>
-            </Link>
+    return (
+      <div className="min-h-screen bg-gray-100">
+        <header className="border-b bg-white">
+          <div className="container mx-auto flex items-center justify-between px-4 py-4">
+            <h1 className="text-2xl font-bold text-gray-900">Operations Dashboard</h1>
+            <div className="flex items-center gap-3">
+              <Button variant="outline" onClick={() => void fetchData()} disabled={isLoading}>
+                {isLoading ? "Refreshing..." : "Refresh"}
+              </Button>
+              <Link href="/agents">
+                <Button variant="ghost">Agent Library</Button>
+              </Link>
+              <Link href="/workflows">
+                <Button variant="ghost">Workflows</Button>
+              </Link>
+              <Link href="/">
+                <Button variant="ghost">Builder</Button>
+              </Link>
+            </div>
           </div>
-        </div>
-      </header>
+        </header>
 
       <main className="container mx-auto px-4 py-8">
         {error && (
