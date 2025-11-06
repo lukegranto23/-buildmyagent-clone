@@ -289,6 +289,9 @@ export default function AgentsPage() {
               </div>
 
               <div className="mt-auto flex flex-col gap-2 pt-6">
+                  <Link href={`/agents/${agent.id}`}>
+                    <Button variant="outline">View details</Button>
+                  </Link>
                 <Link href={`/agents/${agent.id}/sandbox`}>
                   <Button>Test in sandbox</Button>
                 </Link>

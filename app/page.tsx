@@ -11,16 +11,12 @@ import { WorkflowBuilder } from "@/components/workflows/WorkflowBuilder";
 export default function Home() {
   return (
     <div className="min-h-screen bg-white">
-      {/* Header */}
-      <header className="border-b">
-        <nav className="container mx-auto flex items-center justify-between px-4 py-4">
-          <Link href="/" className="flex items-center gap-2 text-xl font-bold">
-            <span>Main Street Agent</span>
-            <span className="text-gray-500">Lab</span>
-          </Link>
-          <div className="hidden md:flex items-center gap-6">
-            <Link href="/dashboard" className="text-gray-600 hover:text-gray-900">
-              Dashboard
+        {/* Header */}
+        <header className="border-b">
+          <nav className="container mx-auto flex items-center justify-between px-4 py-4">
+            <Link href="/" className="flex items-center gap-2 text-xl font-bold">
+              <span>Main Street Agent</span>
+              <span className="text-gray-500">Lab</span>
             </Link>
             <Link href="/agents" className="text-gray-600 hover:text-gray-900">
               Agents
@@ -43,12 +39,8 @@ export default function Home() {
             <Link href="#community" className="text-gray-600 hover:text-gray-900">
               Collective
             </Link>
-          </div>
-          <Link href="/auth/signin">
-            <Button variant="outline">Sign in</Button>
-          </Link>
-        </nav>
-      </header>
+          </nav>
+        </header>
 
         <main>
           {/* Hero Section */}
