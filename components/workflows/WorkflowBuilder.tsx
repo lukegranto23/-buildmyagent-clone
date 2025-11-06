@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import ReactFlow, {
   Background,
   type Connection,
@@ -11,7 +11,6 @@ import ReactFlow, {
   useNodesState,
   type Edge,
   type Node,
-  MarkerType,
 } from "reactflow";
 
 import { WorkflowNode, type WorkflowNodeProps } from "./WorkflowNode";
@@ -21,6 +20,14 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "../ui/tabs";
 import { Switch } from "../ui/switch";
 import { Label } from "../ui/label";
 import { Slider } from "../ui/slider";
+import {
+  buildEdgesFromTemplate,
+  buildNodesFromTemplate,
+  getWorkflowTemplate,
+  workflowModules,
+  workflowTemplates,
+} from "@/lib/workflowData";
+import type { WorkflowModule } from "@/lib/workflowData";
 
 import {
   Bot,
@@ -37,344 +44,71 @@ import {
   Loader2,
 } from "lucide-react";
 
-type FieldDefinition = {
-  id: string;
-  label: string;
-  type: "text" | "textarea" | "select" | "toggle" | "number";
-  placeholder?: string;
-  helper?: string;
-  options?: Array<{ label: string; value: string }>;
-  min?: number;
-  max?: number;
-  step?: number;
-};
-
-type ModuleDefinition = {
-  id: string;
-  category: "Triggers" | "AI" | "Integrations" | "Utilities";
-  title: string;
-  subtitle: string;
-  description: string;
-  variant: "trigger" | "ai" | "action" | "integration" | "utility";
-  checklist?: string[];
-  metrics?: Array<{ label: string; value: string }>;
-  inputs: number;
-  outputs: number;
-  defaults: Record<string, string | number | boolean>;
-  fields: FieldDefinition[];
-};
-
-const MODULE_LIBRARY: ModuleDefinition[] = [
-  {
-    id: "trigger-inbound-call",
-    category: "Triggers",
-    title: "Inbound Phone Call",
-    subtitle: "Twilio Voice",
-    description: "Starts when a customer calls your published DID.",
-    variant: "trigger",
-    inputs: 0,
-    outputs: 1,
-    checklist: [
-      "Verify phone number is provisioned",
-      "Call whisper configured",
-      "Fallback routing set",
-    ],
-    defaults: {
-      phoneNumber: "+1 555-320-1098",
-      whisper: "You're speaking with the Heritage Concierge",
-    },
-    metrics: [
-      { label: "Live", value: "Yes" },
-      { label: "AHT", value: "2m 12s" },
-    ],
-    fields: [
-      {
-        id: "phoneNumber",
-        label: "Forwarding number",
-        type: "text",
-        placeholder: "+1 (___) ___-____",
-        helper: "Number customers dial to reach the agent.",
-      },
-      {
-        id: "whisper",
-        label: "Call whisper",
-        type: "textarea",
-        placeholder: "What the agent hears before connecting",
-      },
-    ],
-  },
-  {
-    id: "ai-main-agent",
-    category: "AI",
-    title: "Main Street Concierge",
-    subtitle: "OpenAI GPT-4o",
-    description: "Handles scheduling, objections, and analog-friendly follow up.",
-    variant: "ai",
-    inputs: 1,
-    outputs: 2,
-    checklist: [
-      "Prompt grounded in industry blueprint",
-      "Owner escalation phrases configured",
-      "CRM logging reviewed",
-    ],
-    defaults: {
-      temperature: 0.6,
-      escalationNumber: "+1 555-989-4455",
-      persona: "Neighborly and confident",
-    },
-    metrics: [
-      { label: "Confidence", value: "High" },
-      { label: "Fallbacks", value: "3%" },
-    ],
-    fields: [
-      {
-        id: "persona",
-        label: "Voice profile",
-        type: "select",
-        options: [
-          { label: "Warm & Neighborly", value: "warm" },
-          { label: "Confident Dispatcher", value: "confident" },
-          { label: "High-Energy Promoter", value: "energetic" },
-        ],
-        helper: "Choose how the agent sounds on calls.",
-      },
-      {
-        id: "temperature",
-        label: "Creativity",
-        type: "number",
-        min: 0,
-        max: 1,
-        step: 0.1,
-        helper: "Lower stays on-script, higher improvises more.",
-      },
-      {
-        id: "escalationNumber",
-        label: "Escalation number",
-        type: "text",
-        placeholder: "+1 555-____",
-        helper: "Direct line when the agent needs a human to step in.",
-      },
-    ],
-  },
-  {
-    id: "integration-calendar",
-    category: "Integrations",
-    title: "Calendar Bridge",
-    subtitle: "Google Calendar",
-    description: "Finds availability and books confirmed appointments.",
-    variant: "integration",
-    inputs: 1,
-    outputs: 1,
-    defaults: {
-      calendarId: "heritage-dental/front-desk",
-      bufferMinutes: 10,
-      notifyOwner: true,
-    },
-    metrics: [
-      { label: "Synced", value: "Every 5m" },
-    ],
-    fields: [
-      {
-        id: "calendarId",
-        label: "Calendar ID",
-        type: "text",
-        placeholder: "Practice calendar resource",
-      },
-      {
-        id: "bufferMinutes",
-        label: "Buffer between appointments (min)",
-        type: "number",
-        min: 0,
-        max: 60,
-        step: 5,
-      },
-      {
-        id: "notifyOwner",
-        label: "Send owner summary",
-        type: "toggle",
-        helper: "Text the owner after each booking",
-      },
-    ],
-  },
-  {
-    id: "action-recap",
-    category: "Utilities",
-    title: "Analog Recap",
-    subtitle: "Printed follow-up",
-    description: "Queues a mailed recap or handwritten note.",
-    variant: "utility",
-    inputs: 1,
-    outputs: 0,
-    defaults: {
-      template: "Recall retention appointment",
-      fulfillmentWindow: "Next day",
-    },
-    fields: [
-      {
-        id: "template",
-        label: "Template",
-        type: "select",
-        options: [
-          { label: "Dental recall letter", value: "recall" },
-          { label: "HVAC tune-up postcard", value: "hvac" },
-          { label: "Financial review packet", value: "financial" },
-        ],
-      },
-      {
-        id: "fulfillmentWindow",
-        label: "Fulfillment window",
-        type: "text",
-        placeholder: "ex: Next-day USPS drop",
-      },
-    ],
-  },
-];
+type FieldDefinition = (typeof workflowModules)[number]["fields"][number];
 
 type BuilderNodeData = WorkflowNodeProps["data"] & {
   moduleId: string;
   config?: Record<string, string>;
 };
 
+type WorkflowBuilderProps = {
+  templateId?: string | null;
+};
+
+const WORKFLOW_MODULE_MAP = new Map(workflowModules.map((module) => [module.id, module]));
+
+function buildDefaultGraph() {
+  const template = workflowTemplates[0];
+  if (!template) {
+    return {
+      nodes: [] as Node<BuilderNodeData>[],
+      edges: [] as Edge[],
+      templateId: null as string | null,
+    };
+  }
+
+  return {
+    nodes: buildNodesFromTemplate(template, WORKFLOW_MODULE_MAP) as Node<BuilderNodeData>[],
+    edges: buildEdgesFromTemplate(template, WORKFLOW_MODULE_MAP) as Edge[],
+    templateId: template.id,
+  };
+}
+
+const DEFAULT_GRAPH = buildDefaultGraph();
 const nodeTypes = { workflowNode: WorkflowNode };
 
-const initialNodes: Node<BuilderNodeData>[] = [
-  {
-    id: "node-trigger",
-    type: "workflowNode",
-    position: { x: 50, y: 140 },
-    data: {
-      moduleId: "trigger-inbound-call",
-      title: "Trigger",
-      subtitle: "Inbound Phone Call",
-      description: "Start when customers dial your published number.",
-      variant: "trigger",
-      status: "configured",
-      inputs: 0,
-      outputs: 1,
-      config: MODULE_LIBRARY[0].fields.reduce((acc, field) => {
-        const def = MODULE_LIBRARY[0].defaults[field.id];
-        acc[field.id] = String(def ?? "");
-        return acc;
-      }, {} as Record<string, string>),
-      checklist: MODULE_LIBRARY[0].checklist,
-      metrics: MODULE_LIBRARY[0].metrics,
-    },
-  },
-  {
-    id: "node-ai",
-    type: "workflowNode",
-    position: { x: 360, y: 80 },
-    data: {
-      moduleId: "ai-main-agent",
-      title: "AI Concierge",
-      subtitle: "GPT-4o voice agent",
-      description: "Handles intake, scheduling, and escalation for Main Street calls.",
-      variant: "ai",
-      status: "running",
-      inputs: 1,
-      outputs: 2,
-      config: MODULE_LIBRARY[1].fields.reduce((acc, field) => {
-        const def = MODULE_LIBRARY[1].defaults[field.id];
-        acc[field.id] = String(def ?? "");
-        return acc;
-      }, {} as Record<string, string>),
-      checklist: MODULE_LIBRARY[1].checklist,
-      metrics: MODULE_LIBRARY[1].metrics,
-    },
-  },
-  {
-    id: "node-calendar",
-    type: "workflowNode",
-    position: { x: 700, y: 60 },
-    data: {
-      moduleId: "integration-calendar",
-      title: "Calendar Bridge",
-      subtitle: "Book appointments",
-      description: "Syncs with Google Calendar and applies buffers automatically.",
-      variant: "integration",
-      status: "configured",
-      inputs: 1,
-      outputs: 1,
-      config: MODULE_LIBRARY[2].fields.reduce((acc, field) => {
-        const def = MODULE_LIBRARY[2].defaults[field.id];
-        acc[field.id] = String(def ?? "");
-        return acc;
-      }, {} as Record<string, string>),
-      checklist: MODULE_LIBRARY[2].checklist,
-      metrics: MODULE_LIBRARY[2].metrics,
-    },
-  },
-  {
-    id: "node-recap",
-    type: "workflowNode",
-    position: { x: 700, y: 240 },
-    data: {
-      moduleId: "action-recap",
-      title: "Analog follow-up",
-      subtitle: "Send mailer",
-      description: "Queues a printed recap or handwritten note to send same-day.",
-      variant: "utility",
-      status: "draft",
-      inputs: 1,
-      outputs: 0,
-      config: MODULE_LIBRARY[3].fields.reduce((acc, field) => {
-        const def = MODULE_LIBRARY[3].defaults[field.id];
-        acc[field.id] = String(def ?? "");
-        return acc;
-      }, {} as Record<string, string>),
-      checklist: MODULE_LIBRARY[3].checklist,
-      metrics: MODULE_LIBRARY[3].metrics,
-    },
-  },
-];
-
-const initialEdges: Edge[] = [
-  {
-    id: "edge-trigger-ai",
-    source: "node-trigger",
-    target: "node-ai",
-    type: "smoothstep",
-    label: "Call audio",
-    animated: true,
-    markerEnd: { type: MarkerType.ArrowClosed, color: "#0ea5e9" },
-    style: { stroke: "#0ea5e9", strokeWidth: 2 },
-  },
-  {
-    id: "edge-ai-calendar",
-    source: "node-ai",
-    target: "node-calendar",
-    type: "smoothstep",
-    label: "Qualified lead",
-    markerEnd: { type: MarkerType.ArrowClosed, color: "#10b981" },
-    style: { stroke: "#10b981", strokeWidth: 2 },
-  },
-  {
-    id: "edge-ai-recap",
-    source: "node-ai",
-    target: "node-recap",
-    type: "smoothstep",
-    label: "Mail recap",
-    markerEnd: { type: MarkerType.ArrowClosed, color: "#6366f1" },
-    style: { stroke: "#6366f1", strokeWidth: 2 },
-  },
-];
-
-const moduleMap = new Map(MODULE_LIBRARY.map((module) => [module.id, module]));
-
-export function WorkflowBuilder() {
-  const [nodes, setNodes, onNodesChange] = useNodesState<BuilderNodeData>(initialNodes);
-  const [edges, setEdges, onEdgesChange] = useEdgesState(initialEdges);
-  const [selectedNodeId, setSelectedNodeId] = useState<string | null>("node-ai");
+export function WorkflowBuilder({ templateId }: WorkflowBuilderProps = {}) {
+  const [nodes, setNodes, onNodesChange] = useNodesState<Node<BuilderNodeData>>(DEFAULT_GRAPH.nodes);
+  const [edges, setEdges, onEdgesChange] = useEdgesState(DEFAULT_GRAPH.edges);
+  const [selectedNodeId, setSelectedNodeId] = useState<string | null>(
+    DEFAULT_GRAPH.nodes[1]?.id ?? DEFAULT_GRAPH.nodes[0]?.id ?? null
+  );
   const [search, setSearch] = useState("");
   const [isRightPanelOpen, setIsRightPanelOpen] = useState(true);
   const [isLeftPanelOpen, setIsLeftPanelOpen] = useState(true);
   const [isSimulating, setIsSimulating] = useState(false);
 
-  const selectedNode = useMemo(() => nodes.find((node) => node.id === selectedNodeId), [nodes, selectedNodeId]);
+  const selectedNode = useMemo(
+    () => nodes.find((node) => node.id === selectedNodeId),
+    [nodes, selectedNodeId]
+  );
+
+  useEffect(() => {
+    if (!templateId) return;
+    const template = getWorkflowTemplate(templateId);
+    if (!template) return;
+
+    const templateNodes = buildNodesFromTemplate(template, WORKFLOW_MODULE_MAP) as Node<BuilderNodeData>[];
+    const templateEdges = buildEdgesFromTemplate(template, WORKFLOW_MODULE_MAP) as Edge[];
+
+    setNodes(templateNodes);
+    setEdges(templateEdges);
+    setSelectedNodeId(templateNodes[0]?.id ?? null);
+  }, [templateId, setEdges, setNodes]);
 
   const filteredModules = useMemo(() => {
-    if (!search.trim()) return MODULE_LIBRARY;
-    return MODULE_LIBRARY.filter((module) => {
+    if (!search.trim()) return workflowModules;
+    return workflowModules.filter((module) => {
       const haystack = `${module.title} ${module.subtitle} ${module.description}`.toLowerCase();
       return haystack.includes(search.toLowerCase());
     });
@@ -387,12 +121,12 @@ export function WorkflowBuilder() {
     [setEdges]
   );
 
-  const handleNodeClick = useCallback((_: any, node: Node<BuilderNodeData>) => {
+  const handleNodeClick = useCallback((_: unknown, node: Node<BuilderNodeData>) => {
     setSelectedNodeId(node.id);
   }, []);
 
   const handleAddModule = useCallback(
-    (module: ModuleDefinition) => {
+    (module: WorkflowModule) => {
       const id = `${module.id}-${Date.now()}`;
       const defaultConfig = module.fields.reduce((acc, field) => {
         const value = module.defaults[field.id];
@@ -403,7 +137,7 @@ export function WorkflowBuilder() {
       const newNode: Node<BuilderNodeData> = {
         id,
         type: "workflowNode",
-        position: { x: 320, y: 160 + Math.random() * 120 },
+        position: { x: 320, y: 160 + Math.random() * 160 },
         data: {
           moduleId: module.id,
           title: module.title,
@@ -413,9 +147,9 @@ export function WorkflowBuilder() {
           status: "draft",
           inputs: module.inputs,
           outputs: module.outputs,
-          config: defaultConfig,
           checklist: module.checklist,
           metrics: module.metrics,
+          config: defaultConfig,
         },
       };
 
@@ -428,20 +162,21 @@ export function WorkflowBuilder() {
   const handleUpdateConfig = useCallback(
     (fieldId: string, value: string) => {
       setNodes((prevNodes) =>
-        prevNodes.map((node) => {
-          if (node.id !== selectedNodeId) return node;
-          return {
-            ...node,
-            data: {
-              ...node.data,
-              status: "configured",
-              config: {
-                ...(node.data.config ?? {}),
-                [fieldId]: value,
-              },
-            },
-          };
-        })
+        prevNodes.map((node) =>
+          node.id === selectedNodeId
+            ? {
+                ...node,
+                data: {
+                  ...node.data,
+                  status: "configured",
+                  config: {
+                    ...(node.data.config ?? {}),
+                    [fieldId]: value,
+                  },
+                },
+              }
+            : node
+        )
       );
     },
     [selectedNodeId, setNodes]
@@ -699,12 +434,9 @@ export function WorkflowBuilder() {
                 </div>
 
                 <div className="space-y-4">
-                  {selectedNode.data.moduleId && moduleMap.has(selectedNode.data.moduleId) ? (
-                    moduleMap
-                      .get(selectedNode.data.moduleId)!
-                      .fields.map((field) =>
-                        renderField(field, selectedNode.data.config?.[field.id] ?? "")
-                      )
+                  {selectedNode.data.moduleId && WORKFLOW_MODULE_MAP.has(selectedNode.data.moduleId) ? (
+                    WORKFLOW_MODULE_MAP.get(selectedNode.data.moduleId)!
+                      .fields.map((field) => renderField(field, selectedNode.data.config?.[field.id] ?? ""))
                   ) : (
                     <p className="rounded-2xl bg-gray-100 p-4 text-sm text-gray-600">
                       Select a module to begin configuring it.
@@ -717,7 +449,10 @@ export function WorkflowBuilder() {
                     <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">Launch checklist</p>
                     <ul className="mt-2 space-y-2">
                       {selectedNode.data.checklist.map((item) => (
-                        <li key={item} className="flex items-start gap-2 rounded-2xl border border-gray-200 px-3 py-2 text-sm text-gray-700">
+                        <li
+                          key={item}
+                          className="flex items-start gap-2 rounded-2xl border border-gray-200 px-3 py-2 text-sm text-gray-700"
+                        >
                           <span className="mt-1 inline-flex h-4 w-4 items-center justify-center rounded-full bg-emerald-100 text-emerald-600">
                             ✓
                           </span>
