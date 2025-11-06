@@ -147,18 +147,64 @@ async function executeDatabase(node: WorkflowNode, context: ExecutionContext): P
 }
 
 async function executeEmail(node: WorkflowNode, context: ExecutionContext): Promise<unknown> {
-  const { to, subject, body } = node.config || {};
-  // Email integration would go here
-  await logExecution(context.executionId, "info", `Email sent to ${to}`, node.id);
-  return { success: true, to, subject };
+  const { to, subject, body, html } = node.config || {};
+  
+  if (!to || !subject || (!body && !html)) {
+    await logExecution(context.executionId, "error", "Email node missing required fields (to, subject, body/html)", node.id);
+    throw new Error("Email node missing required fields");
+  }
+
+  try {
+    const { sendEmail } = await import("@/lib/integrations/email");
+    const resolvedTo = resolveTemplate(to as string, context.variables);
+    const resolvedSubject = resolveTemplate(subject as string, context.variables);
+    const resolvedBody = body ? resolveTemplate(body as string, context.variables) : undefined;
+    const resolvedHtml = html ? resolveTemplate(html as string, context.variables) : undefined;
+
+    const result = await sendEmail(resolvedTo, resolvedSubject, resolvedHtml || resolvedBody || "", resolvedBody);
+    
+    if (result.success) {
+      await logExecution(context.executionId, "info", `Email sent to ${resolvedTo}`, node.id);
+      return { success: true, to: resolvedTo, subject: resolvedSubject, messageId: result.messageId };
+    } else {
+      await logExecution(context.executionId, "error", `Failed to send email: ${result.error}`, node.id);
+      throw new Error(result.error || "Failed to send email");
+    }
+  } catch (error) {
+    await logExecution(context.executionId, "error", `Email execution failed: ${error}`, node.id);
+    throw error;
+  }
 }
 
 async function executeSlack(node: WorkflowNode, context: ExecutionContext): Promise<unknown> {
-  const { channel, message } = node.config || {};
+  const { channel, message, userId, subAccountId } = node.config || {};
+  
+  if (!channel || !message) {
+    await logExecution(context.executionId, "error", "Slack node missing required fields (channel, message)", node.id);
+    throw new Error("Slack node missing required fields");
+  }
+
+  const resolvedChannel = resolveTemplate(channel as string, context.variables);
   const resolvedMessage = resolveTemplate(message as string, context.variables);
-  // Slack integration would go here
-  await logExecution(context.executionId, "info", `Slack message sent to ${channel}`, node.id);
-  return { success: true, channel, message: resolvedMessage };
+  const resolvedUserId = userId ? resolveTemplate(userId as string, context.variables) : context.workflowId;
+
+  try {
+    const { sendSlackMessage } = await import("@/lib/integrations/slack");
+    const resolvedSubAccountId = subAccountId ? resolveTemplate(subAccountId as string, context.variables) : undefined;
+    
+    const result = await sendSlackMessage(resolvedUserId, resolvedChannel, resolvedMessage, resolvedSubAccountId);
+    
+    if (result.success) {
+      await logExecution(context.executionId, "info", `Slack message sent to ${resolvedChannel}`, node.id);
+      return { success: true, channel: resolvedChannel, message: resolvedMessage };
+    } else {
+      await logExecution(context.executionId, "error", `Failed to send Slack message: ${result.error}`, node.id);
+      throw new Error(result.error || "Failed to send Slack message");
+    }
+  } catch (error) {
+    await logExecution(context.executionId, "error", `Slack execution failed: ${error}`, node.id);
+    throw error;
+  }
 }
 
 async function executeWebhook(node: WorkflowNode, context: ExecutionContext): Promise<unknown> {

@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 
 import { prisma } from "@/lib/prisma";
+import { getCurrentUser } from "@/lib/auth";
 
 const workflowSchema = z.object({
   agentId: z.string().optional().nullable(),
@@ -15,34 +16,58 @@ const workflowSchema = z.object({
 });
 
 export async function GET(request: Request) {
-  const url = new URL(request.url);
-  const agentId = url.searchParams.get("agentId");
-  const status = url.searchParams.get("status");
+  try {
+    const user = await getCurrentUser();
+    const url = new URL(request.url);
+    const agentId = url.searchParams.get("agentId");
+    const status = url.searchParams.get("status");
+    const subAccountId = url.searchParams.get("subAccountId");
 
-  const workflows = await prisma.workflow.findMany({
-    where: {
-      ...(agentId && { agentId }),
-      ...(status && { status }),
-    },
-    orderBy: { createdAt: "desc" },
-    include: {
-      _count: {
-        select: { executions: true },
+    const workflows = await prisma.workflow.findMany({
+      where: {
+        ...(user ? { userId: user.id } : {}),
+        ...(agentId && { agentId }),
+        ...(status && { status }),
+        ...(subAccountId && { subAccountId }),
       },
-    },
-  });
+      orderBy: { createdAt: "desc" },
+      include: {
+        _count: {
+          select: { executions: true },
+        },
+      },
+    });
 
-  return NextResponse.json(workflows);
+    return NextResponse.json(workflows);
+  } catch (error) {
+    console.error("Error fetching workflows", error);
+    return NextResponse.json({ error: "Failed to fetch workflows" }, { status: 500 });
+  }
 }
 
 export async function POST(request: Request) {
   try {
+    const user = await getCurrentUser();
+    if (!user) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
+    const dbUser = await prisma.user.findUnique({
+      where: { email: user.email! },
+    });
+
+    if (!dbUser) {
+      return NextResponse.json({ error: "User not found" }, { status: 404 });
+    }
+
     const data = await request.json();
     const parsed = workflowSchema.parse(data);
 
     const workflow = await prisma.workflow.create({
       data: {
         agentId: parsed.agentId ?? null,
+        userId: dbUser.id,
+        subAccountId: data.subAccountId || null,
         name: parsed.name,
         description: parsed.description ?? null,
         nodes: JSON.stringify(parsed.nodes),

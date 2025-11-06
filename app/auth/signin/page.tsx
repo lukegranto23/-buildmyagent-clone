@@ -2,19 +2,50 @@
 
 import { useState } from "react";
 import Link from "next/link";
+import { signIn } from "next-auth/react";
+import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 
 export default function SignInPage() {
   const [email, setEmail] = useState("");
+  const [isLoading, setIsLoading] = useState(false);
+  const router = useRouter();
 
-  const handleEmailSignIn = () => {
-    // TODO: Implement email sign in
-    console.log("Sign in with email:", email);
+  const handleEmailSignIn = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setIsLoading(true);
+    
+    try {
+      const result = await signIn("email", {
+        email,
+        redirect: false,
+      });
+
+      if (result?.error) {
+        alert("Failed to send sign-in email. Please check your email address.");
+      } else {
+        alert("Check your email for a sign-in link!");
+      }
+    } catch (error) {
+      console.error("Sign in error", error);
+      alert("An error occurred. Please try again.");
+    } finally {
+      setIsLoading(false);
+    }
   };
 
-  const handleGoogleSignIn = () => {
-    // TODO: Implement Google OAuth
-    console.log("Sign in with Google");
+  const handleGoogleSignIn = async () => {
+    setIsLoading(true);
+    try {
+      await signIn("google", {
+        callbackUrl: "/dashboard",
+      });
+    } catch (error) {
+      console.error("Google sign in error", error);
+      alert("An error occurred. Please try again.");
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   return (
@@ -25,7 +56,7 @@ export default function SignInPage() {
           <p className="text-gray-600">Choose your preferred sign-in method</p>
         </div>
 
-        <div className="space-y-4">
+        <form onSubmit={handleEmailSignIn} className="space-y-4">
           <div>
             <label htmlFor="email" className="block text-sm font-medium text-gray-700 mb-2">
               Email Address
@@ -36,12 +67,14 @@ export default function SignInPage() {
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               placeholder="you@example.com"
-              className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+              required
+              disabled={isLoading}
+              className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-50"
             />
           </div>
 
-          <Button onClick={handleEmailSignIn} className="w-full bg-blue-600 text-white hover:bg-blue-700">
-            Continue with Email
+          <Button type="submit" disabled={isLoading} className="w-full bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-50">
+            {isLoading ? "Sending..." : "Continue with Email"}
           </Button>
 
           <div className="relative my-6">
@@ -55,8 +88,9 @@ export default function SignInPage() {
 
           <Button
             onClick={handleGoogleSignIn}
+            disabled={isLoading}
             variant="outline"
-            className="w-full flex items-center justify-center gap-2"
+            className="w-full flex items-center justify-center gap-2 disabled:opacity-50"
           >
             <svg className="w-5 h-5" viewBox="0 0 24 24">
               <path
@@ -76,9 +110,9 @@ export default function SignInPage() {
                 d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"
               />
             </svg>
-            Continue with Google
+            {isLoading ? "Loading..." : "Continue with Google"}
           </Button>
-        </div>
+        </form>
 
         <p className="mt-6 text-center text-sm text-gray-600">
           By signing up you agree to our{" "}

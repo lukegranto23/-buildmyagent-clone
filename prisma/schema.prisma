@@ -32,6 +32,12 @@ model Agent {
   priceRetainer    Int
   ownerNotes       String?
   status           String   @default("draft")
+  userId           String?
+  user             User?    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  subAccountId     String?
+  subAccount       SubAccount? @relation(fields: [subAccountId], references: [id], onDelete: Cascade)
+  isPublic         Boolean  @default(false)
+  marketplacePrice Int?
   createdAt        DateTime @default(now())
   updatedAt        DateTime @updatedAt
   sessions         ConversationSession[]
@@ -101,6 +107,10 @@ model Workflow {
   id          String   @id @default(cuid())
   agentId     String?
   agent       Agent?   @relation(fields: [agentId], references: [id], onDelete: Cascade)
+  userId      String?
+  user        User?    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  subAccountId String?
+  subAccount  SubAccount? @relation(fields: [subAccountId], references: [id], onDelete: Cascade)
   name        String
   description String?
   nodes       String   // JSON array of workflow nodes
@@ -117,6 +127,8 @@ model Workflow {
   presence    WorkflowPresence[]
 
   @@index([agentId])
+  @@index([userId])
+  @@index([subAccountId])
   @@index([status])
 }
 
@@ -158,6 +170,7 @@ model Integration {
   status      String   @default("active")
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
+  connections IntegrationConnection[]
 
   @@index([type, status])
 }
@@ -191,5 +204,116 @@ model WorkflowPresence {
 
   @@unique([workflowId, sessionId])
   @@index([workflowId, lastSeen])
+}
+
+model User {
+  id            String    @id @default(cuid())
+  name          String?
+  email         String    @unique
+  emailVerified DateTime?
+  image         String?
+  accounts      Account[]
+  sessions      Session[]
+  credits       Int       @default(0)
+  subscription  String?   // free, starter, pro, enterprise
+  stripeCustomerId String? @unique
+  stripeSubscriptionId String? @unique
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+  agents        Agent[]
+  workflows     Workflow[]
+  subAccounts   SubAccount[] @relation("SubAccountOwner")
+  creditTransactions CreditTransaction[]
+  integrationConnections IntegrationConnection[]
+}
+
+model Account {
+  id                String  @id @default(cuid())
+  userId            String
+  type              String
+  provider          String
+  providerAccountId String
+  refresh_token     String?
+  access_token      String?
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String?
+  session_state     String?
+  user              User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+  @@index([userId])
+}
+
+model Session {
+  id           String   @id @default(cuid())
+  sessionToken String   @unique
+  userId       String
+  expires      DateTime
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}
+
+model VerificationToken {
+  identifier String
+  token      String   @unique
+  expires    DateTime
+
+  @@unique([identifier, token])
+}
+
+model SubAccount {
+  id          String   @id @default(cuid())
+  name        String
+  ownerId     String
+  owner       User     @relation("SubAccountOwner", fields: [ownerId], references: [id], onDelete: Cascade)
+  credits     Int      @default(0)
+  status      String   @default("active")
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  agents      Agent[]
+  workflows   Workflow[]
+  creditTransactions CreditTransaction[]
+  integrationConnections IntegrationConnection[]
+
+  @@index([ownerId])
+}
+
+model CreditTransaction {
+  id          String   @id @default(cuid())
+  userId      String
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  subAccountId String?
+  subAccount  SubAccount? @relation(fields: [subAccountId], references: [id], onDelete: Cascade)
+  amount      Int      // Positive for credits added, negative for credits used
+  type        String   // purchase, usage, refund, bonus
+  description String?
+  metadata    String?  // JSON metadata
+  createdAt   DateTime @default(now())
+
+  @@index([userId, createdAt])
+  @@index([subAccountId, createdAt])
+}
+
+model IntegrationConnection {
+  id          String   @id @default(cuid())
+  userId      String
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  subAccountId String?
+  subAccount  SubAccount? @relation(fields: [subAccountId], references: [id], onDelete: Cascade)
+  integrationId String
+  integration Integration @relation(fields: [integrationId], references: [id], onDelete: Cascade)
+  credentials String?  // Encrypted credentials JSON
+  status      String   @default("active")
+  metadata    String?  // JSON metadata
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@unique([userId, integrationId, subAccountId])
+  @@index([userId])
+  @@index([subAccountId])
+  @@index([integrationId])
 }
 

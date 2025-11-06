@@ -3,6 +3,7 @@ import { z } from "zod";
 
 import { prisma } from "@/lib/prisma";
 import { hydrateAgentRecord } from "@/lib/runtime";
+import { getCurrentUser } from "@/lib/auth";
 
 const salesScriptsSchema = z.object({
   phone: z.string(),
@@ -38,16 +39,44 @@ function safeStringify(value: unknown) {
   return JSON.stringify(value ?? null);
 }
 
-export async function GET() {
-  const agents = await prisma.agent.findMany({
-    orderBy: { createdAt: "desc" },
-  });
+export async function GET(request: Request) {
+  try {
+    const user = await getCurrentUser();
+    const url = new URL(request.url);
+    const includePublic = url.searchParams.get("includePublic") === "true";
 
-  return NextResponse.json(agents.map(hydrateAgentRecord));
+    const agents = await prisma.agent.findMany({
+      where: {
+        OR: [
+          ...(user ? [{ userId: user.id }] : []),
+          ...(includePublic ? [{ isPublic: true, status: "active" }] : []),
+        ],
+      },
+      orderBy: { createdAt: "desc" },
+    });
+
+    return NextResponse.json(agents.map(hydrateAgentRecord));
+  } catch (error) {
+    console.error("Error fetching agents", error);
+    return NextResponse.json({ error: "Failed to fetch agents" }, { status: 500 });
+  }
 }
 
 export async function POST(request: Request) {
   try {
+    const user = await getCurrentUser();
+    if (!user) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
+    const dbUser = await prisma.user.findUnique({
+      where: { email: user.email! },
+    });
+
+    if (!dbUser) {
+      return NextResponse.json({ error: "User not found" }, { status: 404 });
+    }
+
     const data = await request.json();
     const parsed = agentPayloadSchema.parse(data);
 
@@ -73,6 +102,10 @@ export async function POST(request: Request) {
         priceRetainer: parsed.priceRetainer,
         ownerNotes: parsed.ownerNotes ?? null,
         status: parsed.status ?? "draft",
+        userId: dbUser.id,
+        subAccountId: data.subAccountId || null,
+        isPublic: data.isPublic || false,
+        marketplacePrice: data.marketplacePrice || null,
       },
     });
 
