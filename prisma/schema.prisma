@@ -1,0 +1,98 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model Agent {
+  id               String   @id @default(cuid())
+  name             String
+  offerName        String
+  clientName       String?
+  industryId       String
+  roleId           String
+  toneId           String
+  description      String?
+  systemPrompt     String
+  blueprint        String
+  quickWins        String
+  deliverables     String
+  talkingPoints    String
+  salesScripts     String
+  handoffChecklist String
+  integrations     String
+  supportPackages  String
+  priceSetup       Int
+  priceRetainer    Int
+  ownerNotes       String?
+  status           String   @default("draft")
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+  sessions         ConversationSession[]
+  appointments     Appointment[]
+  calendarConfig   CalendarConfig?
+}
+
+model ConversationSession {
+  id         String   @id @default(cuid())
+  agentId    String
+  agent      Agent    @relation(fields: [agentId], references: [id])
+  channel    String   @default("sandbox")
+  status     String   @default("completed")
+  outcome    String?
+  metadata   String?
+  externalId String?  @unique
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+  messages   Message[]
+}
+
+model Message {
+  id        String               @id @default(cuid())
+  sessionId String
+  session   ConversationSession  @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  role      String
+  content   String
+  createdAt DateTime             @default(now())
+}
+
+model CalendarConfig {
+  id              String   @id @default(cuid())
+  agentId         String   @unique
+  agent           Agent    @relation(fields: [agentId], references: [id], onDelete: Cascade)
+  timezone        String   @default("America/Chicago")
+  meetingDuration Int      @default(30)
+  bufferBefore    Int      @default(10)
+  bufferAfter     Int      @default(10)
+  availability    String   @default("[]")
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+}
+
+model Appointment {
+  id              String   @id @default(cuid())
+  agentId         String
+  agent           Agent    @relation(fields: [agentId], references: [id], onDelete: Cascade)
+  externalId      String?  @unique
+  customerName    String?
+  customerContact String?
+  start           DateTime
+  end             DateTime
+  channel         String   @default("unknown")
+  status          String   @default("scheduled")
+  source          String?
+  notes           String?
+  metadata        String?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@index([agentId, start])
+  @@index([status, start])
+}
+

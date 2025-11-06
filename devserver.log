@@ -1,0 +1,35 @@
+
+> buildmyagent-clone@1.0.0 dev
+> next dev
+
+  ▲ Next.js 14.2.33
+  - Local:        http://localhost:3000
+
+ ✓ Starting...
+Attention: Next.js now collects completely anonymous telemetry regarding usage.
+This information is used to shape Next.js' roadmap and prioritize features.
+You can learn more, including how to opt-out if you'd not like to participate in this anonymous program, by visiting the following URL:
+https://nextjs.org/telemetry
+
+ ✓ Ready in 3.1s
+ ○ Compiling / ...
+ ✓ Compiled / in 11.8s (531 modules)
+ ✓ Compiled in 768ms (268 modules)
+ GET / 200 in 12708ms
+ ○ Compiling /agents/create ...
+ ✓ Compiled /agents/create in 779ms (525 modules)
+ ✓ Compiled /agents in 514ms (531 modules)
+ ✓ Compiled /auth/signin in 518ms (537 modules)
+ ✓ Compiled in 993ms (551 modules)
+ ✓ Compiled in 217ms (275 modules)
+ ✓ Compiled in 419ms (551 modules)
+ ✓ Compiled in 763ms (551 modules)
+ ✓ Compiled in 933ms (551 modules)
+ ✓ Compiled in 493ms (551 modules)
+ ✓ Compiled in 503ms (551 modules)
+ ✓ Compiled in 789ms (551 modules)
+ ✓ Compiled in 337ms (275 modules)
+ ✓ Compiled in 240ms (275 modules)
+ ✓ Compiled in 200ms (275 modules)
+ ✓ Compiled in 1271ms (551 modules)
+ ✓ Compiled in 714ms (551 modules)

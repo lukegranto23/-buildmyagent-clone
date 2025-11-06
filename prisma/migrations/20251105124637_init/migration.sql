@@ -1,0 +1,26 @@
+-- CreateTable
+CREATE TABLE "Agent" (
+    "id" TEXT NOT NULL PRIMARY KEY,
+    "name" TEXT NOT NULL,
+    "offerName" TEXT NOT NULL,
+    "clientName" TEXT,
+    "industryId" TEXT NOT NULL,
+    "roleId" TEXT NOT NULL,
+    "toneId" TEXT NOT NULL,
+    "description" TEXT,
+    "systemPrompt" TEXT NOT NULL,
+    "blueprint" TEXT NOT NULL,
+    "quickWins" TEXT NOT NULL,
+    "deliverables" TEXT NOT NULL,
+    "talkingPoints" TEXT NOT NULL,
+    "salesScripts" TEXT NOT NULL,
+    "handoffChecklist" TEXT NOT NULL,
+    "integrations" TEXT NOT NULL,
+    "supportPackages" TEXT NOT NULL,
+    "priceSetup" INTEGER NOT NULL,
+    "priceRetainer" INTEGER NOT NULL,
+    "ownerNotes" TEXT,
+    "status" TEXT NOT NULL DEFAULT 'draft',
+    "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updatedAt" DATETIME NOT NULL
+);
