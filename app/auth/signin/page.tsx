@@ -7,14 +7,21 @@ import { Button } from "@/components/ui/button";
 export default function SignInPage() {
   const [email, setEmail] = useState("");
 
-  const handleEmailSignIn = () => {
-    // TODO: Implement email sign in
-    console.log("Sign in with email:", email);
+  const handleEmailSignIn = async () => {
+    if (!email) {
+      alert("Please enter your email address");
+      return;
+    }
+    
+    // For demo purposes, redirect to the agents page
+    // In production, this would use NextAuth signIn()
+    window.location.href = "/agents";
   };
 
-  const handleGoogleSignIn = () => {
-    // TODO: Implement Google OAuth
-    console.log("Sign in with Google");
+  const handleGoogleSignIn = async () => {
+    // For demo purposes, redirect to the agents page
+    // In production, this would use NextAuth signIn("google")
+    window.location.href = "/agents";
   };
 
   return (
