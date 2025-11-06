@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import "./globals.css";
 import "reactflow/dist/style.css";
+import { SessionProvider } from "@/components/SessionProvider";
 
 export const metadata: Metadata = {
   title: "Main Street Agent Lab by BuildMyAgent",
@@ -14,7 +15,9 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en">
-      <body className="antialiased">{children}</body>
+      <body className="antialiased">
+        <SessionProvider>{children}</SessionProvider>
+      </body>
     </html>
   );
 }

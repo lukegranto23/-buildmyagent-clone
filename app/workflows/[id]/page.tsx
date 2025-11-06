@@ -6,6 +6,7 @@ import { useParams, useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import ReactFlow, {
   Background,
+  BackgroundVariant,
   Connection,
   Controls,
   Edge,
@@ -342,14 +343,6 @@ export default function WorkflowBuilderPage() {
   }, [fetchWorkflow]);
 
   useEffect(() => {
-    void loadHistory({ selectLatest: true });
-  }, [loadHistory]);
-
-  useEffect(() => {
-    void loadVersions();
-  }, [loadVersions]);
-
-useEffect(() => {
   if (typeof window === "undefined" || !workflowId) return;
 
   const sessionKey = `workflow-presence-${workflowId}`;
@@ -376,65 +369,6 @@ useEffect(() => {
   }
   setPresenceColor(storedColor);
 }, [workflowId]);
-
-useEffect(() => {
-  if (!workflowId || !sessionId) return;
-
-  void sendHeartbeat();
-  heartbeatRef.current = setInterval(() => {
-    void sendHeartbeat();
-  }, 20_000);
-
-  const handleBeforeUnload = () => {
-    try {
-      const url = `/api/workflows/${workflowId}/presence?sessionId=${encodeURIComponent(sessionId)}`;
-      if (navigator.sendBeacon) {
-        const blob = new Blob(["{}"], { type: "application/json" });
-        navigator.sendBeacon(url, blob);
-      } else {
-        void fetch(url, { method: "DELETE", keepalive: true });
-      }
-    } catch (error) {
-      console.error(error);
-    }
-  };
-
-  if (typeof window !== "undefined") {
-    window.addEventListener("beforeunload", handleBeforeUnload);
-  }
-
-  return () => {
-    if (heartbeatRef.current) {
-      clearInterval(heartbeatRef.current);
-      heartbeatRef.current = null;
-    }
-    if (typeof window !== "undefined") {
-      window.removeEventListener("beforeunload", handleBeforeUnload);
-    }
-    try {
-      const url = `/api/workflows/${workflowId}/presence?sessionId=${encodeURIComponent(sessionId)}`;
-      void fetch(url, { method: "DELETE", keepalive: true }).catch(() => undefined);
-    } catch (error) {
-      console.error(error);
-    }
-  };
-}, [sendHeartbeat, sessionId, workflowId]);
-
-useEffect(() => {
-  if (!workflowId) return;
-
-  void fetchPresence();
-  presenceIntervalRef.current = setInterval(() => {
-    void fetchPresence();
-  }, 10_000);
-
-  return () => {
-    if (presenceIntervalRef.current) {
-      clearInterval(presenceIntervalRef.current);
-      presenceIntervalRef.current = null;
-    }
-  };
-}, [fetchPresence, workflowId]);
 
   const onNodesChange = useCallback(
     (changes: NodeChange[]) => setNodes((nds) => applyNodeChanges(changes, nds)),
@@ -747,6 +681,73 @@ useEffect(() => {
   const handlePresenceCancel = useCallback(() => {
     setIsEditingPresence(false);
   }, []);
+
+  useEffect(() => {
+    void loadHistory({ selectLatest: true });
+  }, [loadHistory]);
+
+  useEffect(() => {
+    void loadVersions();
+  }, [loadVersions]);
+
+  useEffect(() => {
+    if (!workflowId || !sessionId) return;
+
+    void sendHeartbeat();
+    heartbeatRef.current = setInterval(() => {
+      void sendHeartbeat();
+    }, 20_000);
+
+    const handleBeforeUnload = () => {
+      try {
+        const url = `/api/workflows/${workflowId}/presence?sessionId=${encodeURIComponent(sessionId)}`;
+        if (navigator.sendBeacon) {
+          const blob = new Blob(["{}"], { type: "application/json" });
+          navigator.sendBeacon(url, blob);
+        } else {
+          void fetch(url, { method: "DELETE", keepalive: true });
+        }
+      } catch (error) {
+        console.error(error);
+      }
+    };
+
+    if (typeof window !== "undefined") {
+      window.addEventListener("beforeunload", handleBeforeUnload);
+    }
+
+    return () => {
+      if (heartbeatRef.current) {
+        clearInterval(heartbeatRef.current);
+        heartbeatRef.current = null;
+      }
+      if (typeof window !== "undefined") {
+        window.removeEventListener("beforeunload", handleBeforeUnload);
+      }
+      try {
+        const url = `/api/workflows/${workflowId}/presence?sessionId=${encodeURIComponent(sessionId)}`;
+        void fetch(url, { method: "DELETE", keepalive: true }).catch(() => undefined);
+      } catch (error) {
+        console.error(error);
+      }
+    };
+  }, [sendHeartbeat, sessionId, workflowId]);
+
+  useEffect(() => {
+    if (!workflowId) return;
+
+    void fetchPresence();
+    presenceIntervalRef.current = setInterval(() => {
+      void fetchPresence();
+    }, 10_000);
+
+    return () => {
+      if (presenceIntervalRef.current) {
+        clearInterval(presenceIntervalRef.current);
+        presenceIntervalRef.current = null;
+      }
+    };
+  }, [fetchPresence, workflowId]);
 
   const handleAddNode = (item: NodeLibraryItem) => {
     const id = `${item.type}-${Date.now()}`;
@@ -1115,7 +1116,7 @@ useEffect(() => {
             nodeTypes={nodeTypes}
             fitView
           >
-            <Background variant="dots" gap={16} size={1} />
+            <Background variant={BackgroundVariant.Dots} gap={16} size={1} />
             <MiniMap pannable zoomable />
             <Controls />
           </ReactFlow>
@@ -1463,11 +1464,11 @@ useEffect(() => {
                                     Node: {log.nodeId}
                                   </p>
                                 )}
-                                {log.data && (
+                                {log.data ? (
                                   <pre className="mt-2 max-h-32 overflow-y-auto rounded-lg border border-gray-100 bg-gray-50 p-2 text-[11px] text-gray-700">
                                     {formatJson(log.data)}
                                   </pre>
-                                )}
+                                ) : null}
                               </div>
                             ))}
                           </div>

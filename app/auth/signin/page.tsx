@@ -1,20 +1,42 @@
 "use client";
 
-import { useState } from "react";
+import { useState, Suspense } from "react";
 import Link from "next/link";
+import { signIn } from "next-auth/react";
+import { useSearchParams } from "next/navigation";
 import { Button } from "@/components/ui/button";
 
-export default function SignInPage() {
+function SignInForm() {
   const [email, setEmail] = useState("");
+  const [isLoading, setIsLoading] = useState(false);
+  const searchParams = useSearchParams();
+  const callbackUrl = searchParams.get("callbackUrl") || "/agents";
+  const error = searchParams.get("error");
 
-  const handleEmailSignIn = () => {
-    // TODO: Implement email sign in
-    console.log("Sign in with email:", email);
+  const handleEmailSignIn = async () => {
+    setIsLoading(true);
+    try {
+      await signIn("email", {
+        email,
+        callbackUrl,
+      });
+    } catch (error) {
+      console.error("Sign in error:", error);
+    } finally {
+      setIsLoading(false);
+    }
   };
 
-  const handleGoogleSignIn = () => {
-    // TODO: Implement Google OAuth
-    console.log("Sign in with Google");
+  const handleGoogleSignIn = async () => {
+    setIsLoading(true);
+    try {
+      await signIn("google", {
+        callbackUrl,
+      });
+    } catch (error) {
+      console.error("Sign in error:", error);
+      setIsLoading(false);
+    }
   };
 
   return (
@@ -23,6 +45,13 @@ export default function SignInPage() {
         <div className="text-center mb-8">
           <h1 className="text-3xl font-bold mb-2">Welcome Back</h1>
           <p className="text-gray-600">Choose your preferred sign-in method</p>
+          {error && (
+            <div className="mt-4 rounded-lg bg-red-50 p-3 text-sm text-red-600">
+              {error === "OAuthAccountNotLinked"
+                ? "An account already exists with this email using a different sign-in method."
+                : "An error occurred during sign in. Please try again."}
+            </div>
+          )}
         </div>
 
         <div className="space-y-4">
@@ -40,8 +69,12 @@ export default function SignInPage() {
             />
           </div>
 
-          <Button onClick={handleEmailSignIn} className="w-full bg-blue-600 text-white hover:bg-blue-700">
-            Continue with Email
+          <Button
+            onClick={handleEmailSignIn}
+            disabled={!email || isLoading}
+            className="w-full bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-50"
+          >
+            {isLoading ? "Signing in..." : "Continue with Email"}
           </Button>
 
           <div className="relative my-6">
@@ -55,8 +88,9 @@ export default function SignInPage() {
 
           <Button
             onClick={handleGoogleSignIn}
+            disabled={isLoading}
             variant="outline"
-            className="w-full flex items-center justify-center gap-2"
+            className="w-full flex items-center justify-center gap-2 disabled:opacity-50"
           >
             <svg className="w-5 h-5" viewBox="0 0 24 24">
               <path
@@ -92,6 +126,18 @@ export default function SignInPage() {
         </p>
       </div>
     </div>
+  );
+}
+
+export default function SignInPage() {
+  return (
+    <Suspense fallback={
+      <div className="min-h-screen flex items-center justify-center bg-gray-50 px-4">
+        <div className="text-gray-600">Loading...</div>
+      </div>
+    }>
+      <SignInForm />
+    </Suspense>
   );
 }
 
