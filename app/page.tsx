@@ -6,6 +6,7 @@ import { Pricing } from "@/components/Pricing";
 import { Testimonials } from "@/components/Testimonials";
 import { FAQ } from "@/components/FAQ";
 import { Community } from "@/components/Community";
+import { WorkflowBuilder } from "@/components/workflows/WorkflowBuilder";
 
 export default function Home() {
   return (
@@ -47,10 +48,27 @@ export default function Home() {
       </header>
 
       <main>
-        {/* Hero Section */}
-        <section className="container mx-auto px-4 py-20">
-          <AgentBuilder />
-        </section>
+          {/* Hero Section */}
+          <section className="container mx-auto px-4 py-20">
+            <AgentBuilder />
+          </section>
+
+          <section className="bg-gray-100 py-16">
+            <div className="container mx-auto px-4">
+              <div className="mb-8 max-w-3xl">
+                <span className="inline-flex items-center gap-2 rounded-full bg-emerald-500/15 px-3 py-1 text-xs font-semibold uppercase tracking-wide text-emerald-700">
+                  Orchestrate the experience
+                </span>
+                <h2 className="mt-4 text-3xl font-semibold text-gray-900 sm:text-4xl">
+                  Drag-and-drop the calls, texts, and analog follow-up your clients expect
+                </h2>
+                <p className="mt-3 text-base text-gray-600">
+                  Map the full customer journey just like n8n or buildmyagent.io—triggers on the left, AI brains in the middle, and integrations that make it real on day one. No API keys required yet.
+                </p>
+              </div>
+              <WorkflowBuilder />
+            </div>
+          </section>
 
         <section id="method" className="bg-slate-900 py-16">
           <div className="container mx-auto px-4">
