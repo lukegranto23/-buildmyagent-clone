@@ -1,20 +1,44 @@
 "use client";
 
 import { useState } from "react";
+import { signIn } from "next-auth/react";
+import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
 
 export default function SignInPage() {
+  const router = useRouter();
   const [email, setEmail] = useState("");
+  const [isLoading, setIsLoading] = useState(false);
 
-  const handleEmailSignIn = () => {
-    // TODO: Implement email sign in
-    console.log("Sign in with email:", email);
+  const handleEmailSignIn = async () => {
+    if (!email) return;
+    
+    setIsLoading(true);
+    try {
+      const result = await signIn("credentials", {
+        email,
+        redirect: false,
+      });
+
+      if (result?.ok) {
+        router.push("/dashboard");
+      }
+    } catch (error) {
+      console.error("Sign in error:", error);
+    } finally {
+      setIsLoading(false);
+    }
   };
 
-  const handleGoogleSignIn = () => {
-    // TODO: Implement Google OAuth
-    console.log("Sign in with Google");
+  const handleGoogleSignIn = async () => {
+    setIsLoading(true);
+    try {
+      await signIn("google", { callbackUrl: "/dashboard" });
+    } catch (error) {
+      console.error("Google sign in error:", error);
+      setIsLoading(false);
+    }
   };
 
   return (
@@ -40,8 +64,12 @@ export default function SignInPage() {
             />
           </div>
 
-          <Button onClick={handleEmailSignIn} className="w-full bg-blue-600 text-white hover:bg-blue-700">
-            Continue with Email
+          <Button 
+            onClick={handleEmailSignIn} 
+            disabled={isLoading || !email}
+            className="w-full bg-blue-600 text-white hover:bg-blue-700"
+          >
+            {isLoading ? "Signing in..." : "Continue with Email"}
           </Button>
 
           <div className="relative my-6">
@@ -55,6 +83,7 @@ export default function SignInPage() {
 
           <Button
             onClick={handleGoogleSignIn}
+            disabled={isLoading}
             variant="outline"
             className="w-full flex items-center justify-center gap-2"
           >
